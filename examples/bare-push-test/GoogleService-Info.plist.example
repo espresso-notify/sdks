@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Placeholder. Download the real GoogleService-Info.plist from Firebase Console →
+  Project settings → your iOS app, then add it to the iOS target in Xcode
+  (drag into the project, "Copy items if needed"). Also upload an APNs auth key
+  (.p8) in Firebase Console → Cloud Messaging.
+-->
+<plist version="1.0">
+  <dict></dict>
+</plist>

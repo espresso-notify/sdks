@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#C2420C" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <title>Espresso Notify web push example</title>
+  </head>
+  <body>
+    <main>
+      <h1>Web push example</h1>
+      <p class="lead">Subscribe this browser, link it to a user and receive a notification sent from your project.</p>
+
+      <section aria-labelledby="status-title">
+        <h2 id="status-title">Status</h2>
+        <dl id="status"></dl>
+        <p id="notice" role="status" hidden></p>
+      </section>
+
+      <section aria-labelledby="subscribe-title">
+        <h2 id="subscribe-title">1. Subscribe</h2>
+        <p>The browser asks for the permission only after you click.</p>
+        <button id="enable" type="button">Enable notifications</button>
+        <button id="disable" type="button" class="secondary" hidden>Unsubscribe</button>
+      </section>
+
+      <section aria-labelledby="identify-title">
+        <h2 id="identify-title">2. Identify the user</h2>
+        <form id="identify-form">
+          <label for="external-id">Your id for this user</label>
+          <input id="external-id" name="external-id" autocomplete="off" placeholder="user_123" required />
+          <button type="submit" disabled id="identify">Identify</button>
+        </form>
+      </section>
+
+      <section aria-labelledby="received-title">
+        <h2 id="received-title">3. Received</h2>
+        <p>Send a notification from the dashboard or with the API. The system notification is shown by the service worker; the list below is what the page receives through <code>onPush</code>.</p>
+        <ul id="received"></ul>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

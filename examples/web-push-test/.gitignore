@@ -1,0 +1,8 @@
+node_modules
+dist
+.env
+.env.local
+.env.*.local
+# Built by `npm run prepare:sdk`
+.sdk-build
+public/push

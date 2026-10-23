@@ -1,0 +1,31 @@
+{
+  "name": "expo-push-test",
+  "version": "1.0.0",
+  "private": true,
+  "main": "node_modules/expo/AppEntry.js",
+  "scripts": {
+    "start": "expo start --dev-client",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "prebuild": "expo prebuild",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@espresso-notify/react-native": "file:../../sdk",
+    "expo": "~57.0.26",
+    "expo-application": "~57.0.3",
+    "expo-clipboard": "~57.0.2",
+    "expo-device": "~57.0.2",
+    "expo-localization": "~57.0.2",
+    "expo-notifications": "~57.0.21",
+    "expo-secure-store": "~57.0.4",
+    "expo-status-bar": "~57.0.1",
+    "react": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-ssl-public-key-pinning": "^1.2.6"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "typescript": "~6.0.3"
+  }
+}

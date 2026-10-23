@@ -1,5 +1,7 @@
 # Espresso Notify Web SDK
 
+[Website](https://espressonotify.com) · [Documentation](https://docs.espressonotify.com/docs/sdks/web) · [Dashboard](https://espressonotify.com/login) · [Changelog](https://docs.espressonotify.com/docs/support#sdk-changelog) · [Repository](https://github.com/espresso-notify/sdks)
+
 Web Push for [Espresso Notify](https://espressonotify.com): subscribe a browser, link it to a user of your app and receive notifications through a service worker.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -32,8 +34,6 @@ The package is `@espresso-notify/web`. It runs on your site, in the browser of y
 - A bundler or a plain `<script type="module">` page that can import an npm package. Node 18 or newer to run the installer command.
 
 ## Install
-
-> **Coming soon.** `@espresso-notify/web` is not published to npm yet: it will be published at launch, and until then `npm install` and `npx` answer 404. The commands below are what you will run once it is out.
 
 ```bash
 npm install @espresso-notify/web

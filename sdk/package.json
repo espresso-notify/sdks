@@ -1,6 +1,6 @@
 {
   "name": "@espresso-notify/react-native",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Official Espresso Notify SDK by CaffeeeLabs. Easily integrate Espresso Notify into your Expo / React Native apps.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -72,7 +72,7 @@
   "bugs": {
     "url": "https://github.com/espresso-notify/sdks/issues"
   },
-  "homepage": "https://github.com/espresso-notify/sdks/tree/main/sdk#readme",
+  "homepage": "https://docs.espressonotify.com/docs/react-native",
   "peerDependencies": {
     "@react-native-async-storage/async-storage": ">=1.24.0",
     "@react-native-firebase/app-check": ">=20.5.0 <26",

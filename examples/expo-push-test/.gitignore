@@ -1,0 +1,5 @@
+# Generated locally; never committed (README: native folders come from `expo prebuild`/`expo run:*`).
+.expo/
+dist/
+ios/
+android/

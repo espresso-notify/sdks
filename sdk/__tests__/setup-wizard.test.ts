@@ -48,7 +48,7 @@ const expoApp = (extra: Files = {}, deps: Record<string, string> = { expo: '~57.
  * Runs the wizard in `cwd`. `closeCode` is what the fake `npx expo install` exits with; `onInstall` runs when it "installs"
  * (to change package.json the way a real install does); `fs` and `path` replace the file system and the path module.
  */
-async function run(argv: string[], cwd: string, opts: { closeCode?: number; spawnError?: Error; stdin?: string; tty?: boolean; platform?: string; env?: Record<string, string | undefined>; onInstall?: () => void; fs?: any; path?: any } = {}) {
+async function run(argv: string[], cwd: string, opts: { closeCode?: number; closeCodes?: number[]; spawnError?: Error; stdin?: string; tty?: boolean; platform?: string; env?: Record<string, string | undefined>; onInstall?: () => void; fs?: any; path?: any } = {}) {
   const out: string[] = [];
   const err: string[] = [];
   const spawn = jest.fn((_cmd: string, _args: string[], _options: any) => {
@@ -56,7 +56,10 @@ async function run(argv: string[], cwd: string, opts: { closeCode?: number; spaw
     setImmediate(() => {
       if (opts.spawnError) return child.emit('error', opts.spawnError);
       opts.onInstall?.();
-      return child.emit('close', opts.closeCode ?? 0);
+      // `closeCodes[n]` is the exit code of the n-th run of the fake `expo install` (the last one repeats)
+      const codes = opts.closeCodes;
+      const nth = spawn.mock.calls.length - 1;
+      return child.emit('close', codes ? codes[Math.min(nth, codes.length - 1)] : opts.closeCode ?? 0);
     });
     return child;
   });
@@ -611,6 +614,81 @@ describe('expo install that exits 1 after a good install (SSF-02.1, SSF-02.2)', 
     });
 
     expect(r.code).toBe(0);
+  });
+});
+
+describe('expo install that stops after the install and is run again (EXPI-01, D-229)', () => {
+  it('runs the same command once more, with nothing added, and finishes without an error (AC 1, 2)', async () => {
+    const dir = project(expoApp());
+    const r = await run(['setup', '--yes'], dir, { closeCodes: [1, 0], onInstall: installEverything(dir) });
+
+    expect(r.spawn).toHaveBeenCalledTimes(2);
+    const [first, second] = r.spawn.mock.calls;
+    expect(second[0]).toBe(first[0]);
+    expect(second[1]).toEqual(first[1]);
+    expect(second[1]).toEqual(INSTALL_ARGS);
+    expect(JSON.stringify(second[1])).not.toMatch(/legacy-peer-deps|--force/);
+    expect(second[2].env).toBeUndefined();
+    expect(r.out + r.err).toMatch(/running it again/i);
+    expect(r.err).not.toMatch(/exited with code/);
+    expect(r.err).not.toMatch(/did not finish/);
+    expect(r.code).toBe(0);
+    expect(r.out).toContain('[3/6]');
+    expect(r.out).toMatch(/^Done\.$/m);
+  });
+
+  it('does not run it a third time when the second run exits with an error too (AC 3)', async () => {
+    const dir = project(expoApp());
+    const r = await run(['setup', '--yes'], dir, { closeCodes: [1], onInstall: installEverything(dir) });
+
+    expect(r.spawn).toHaveBeenCalledTimes(2);
+    expect(r.err).toMatch(/exited with code 1/);
+    expect(r.err).toMatch(/every package is in package.json/);
+    expect(r.code).toBe(0);
+  });
+
+  it.each(['app.config.js', 'app.config.ts', 'app.config.mjs', 'app.config.cjs'])('runs it once with %s, which the CLI cannot edit (AC 4)', async (name) => {
+    const dir = project(expoApp({ [name]: 'export default {}\n' }));
+    const r = await run(['setup', '--yes'], dir, { closeCodes: [1, 0], onInstall: installEverything(dir) });
+
+    expect(r.spawn).toHaveBeenCalledTimes(1);
+    expect(r.out + r.err).not.toMatch(/running it again/i);
+  });
+
+  it('does not run it again when a package is missing after the error (AC 5)', async () => {
+    const dir = project(expoApp());
+    const r = await run(['setup', '--yes'], dir, {
+      closeCodes: [1, 0],
+      onInstall: () => writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'app', dependencies: { expo: '~57.0.26', [PLUGIN]: '^0.1.0' } })),
+    });
+
+    expect(r.spawn).toHaveBeenCalledTimes(1);
+    expect(r.code).toBe(2);
+    expect(r.err).toMatch(/did not finish/);
+  });
+
+  it('does not run it again when package.json cannot be read after the error (AC 5)', async () => {
+    const dir = project(expoApp());
+    const r = await run(['setup', '--yes'], dir, { closeCodes: [1, 0], onInstall: () => writeFileSync(join(dir, 'package.json'), '{ not json') });
+
+    expect(r.spawn).toHaveBeenCalledTimes(1);
+    expect(r.code).toBe(2);
+  });
+
+  it('runs it once when it exits with 0 (AC 6)', async () => {
+    const dir = project(expoApp());
+    const r = await run(['setup', '--yes'], dir, { closeCode: 0, onInstall: installEverything(dir) });
+
+    expect(r.spawn).toHaveBeenCalledTimes(1);
+    expect(r.out + r.err).not.toMatch(/running it again/i);
+  });
+
+  it('runs it once when the process cannot be started', async () => {
+    const dir = project(expoApp());
+    const r = await run(['setup', '--yes'], dir, { spawnError: new Error('spawn npx ENOENT') });
+
+    expect(r.spawn).toHaveBeenCalledTimes(1);
+    expect(r.code).toBe(2);
   });
 });
 

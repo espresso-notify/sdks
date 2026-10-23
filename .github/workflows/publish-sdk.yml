@@ -1,14 +1,20 @@
 name: Publish SDK to npm (provenance)
 
-# Publishes the two SDK packages to npm WITH provenance (`npm publish --provenance`, signed by GitHub through OIDC) from the code
+# STAGES the two SDK packages on npm WITH provenance (`npm stage publish --provenance`, signed by GitHub through OIDC) from the code
 # of this public repository and from a `dist` that the job rebuilds and compares. Provenance is the reason this repository is public:
 # npm only signs it for a public source repository, and the statement links each published version to the commit and the run.
 # This file is copied here from the private monorepo on every sync; do not edit it here, the next sync replaces it.
 #
-# Nothing runs until the owner of the repository sets up what is below, and no tag has been created or `npm publish` run from it:
+# The job never publishes. The Trusted Publisher of each package is registered WITHOUT "Allow npm publish" (owner decision of
+# 2026-10-23), so the workflow can only stage: the version waits on npm, not public, until a maintainer approves it with 2FA, on
+# npmjs.com (the package page, tab "Staged Packages", button "Approve") or with `npm stage approve <stage-id>`
+# (`npm stage list <package>` shows the id). Approving needs a person; no token or OIDC identity can do it.
+#
+# Nothing runs until the owner of the repository sets up what is below, and no tag has been created or `npm stage publish` run from it:
 #   1. npm: own the `@espresso-notify` scope and turn on 2FA. Then EITHER register this workflow (`publish-sdk.yml`, environment
-#      `npm-publish`) as the "Trusted Publisher" of each package on npm (no token; needs npm 11.5.1 or newer, which the job checks),
-#      OR create a granular publish token for the two packages and store it as the secret `NPM_TOKEN` of the environment `npm-publish`.
+#      `npm-publish`) as the "Trusted Publisher" of each package on npm, allowing only `npm stage publish` (no token; needs npm
+#      11.15.0 or newer, which the job checks), OR create a granular token for the two packages and store it as the secret `NPM_TOKEN`
+#      of the environment `npm-publish` (staging works with any token type). Both packages must already exist on npm.
 #   2. GitHub: create the environment `npm-publish` (Settings > Environments) with required reviewers, limited to the branch `main`
 #      and to the tags `react-native-v*` and `web-v*`.
 #   3. GitHub: create the repository variable `NPM_PUBLISH_ENABLED` with the value `true`. Without it the `select` job does not run
@@ -18,13 +24,14 @@ name: Publish SDK to npm (provenance)
 #
 # How to use it once set up:
 #   - By hand: Actions > "Publish SDK to npm" > Run workflow, on `main`. `dry_run` is ON by default: everything runs and ends in
-#     `npm publish --dry-run`. Turn it off to publish for real.
+#     `npm stage publish --dry-run`. Turn it off to stage for real.
 #   - By tag: `git tag react-native-v0.0.1` or `git tag web-v0.0.1` (the version of the tag must be the one in `package.json`) and
-#     `git push origin <tag>`. A tag publishes for real, after the environment approves.
+#     `git push origin <tag>`. A tag stages for real, after the environment approves. The summary of the run says that the
+#     version is staged and where to approve it.
 #
 # Each publication checks the tag, the version, the repository and that the commit is on `main`, installs with
 # `npm ci --ignore-scripts`, runs `npm run verify:dist` (the committed `dist` must be the build of `src`), the tests and a check that
-# neither `dist` nor the tarball holds the API URL placeholder, and only then runs `npm publish --provenance --ignore-scripts`
+# neither `dist` nor the tarball holds the API URL placeholder, and only then runs `npm stage publish --provenance --ignore-scripts`
 # (the verified `dist` is what is uploaded; `prepublishOnly` rebuilds nothing).
 on:
   workflow_dispatch:
@@ -87,7 +94,7 @@ jobs:
           echo "matrix=$pick" >> "$GITHUB_OUTPUT"
 
   publish:
-    name: publish ${{ matrix.name }}
+    name: stage ${{ matrix.name }}
     needs: select
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -158,20 +165,28 @@ jobs:
             exit 1
           fi
 
-      - name: Check the npm version when no token is used
+      - name: Check the npm version
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
           have=$(npm --version)
-          echo "npm $have"
+          node_have=$(node --version | sed 's/^v//')
+          echo "npm $have, node $node_have"
+          # `npm stage` exists from npm 11.15.0 and needs Node 22.14.0 or newer, with a token or without one.
+          lowest=$(printf '%s\n%s\n' "11.15.0" "$have" | sort -V | head -n 1)
+          if [ "$lowest" != "11.15.0" ]; then
+            echo "npm $have is older than 11.15.0, which is the first with the command 'npm stage'; use a newer Node (22.14.0 or newer, with its npm updated)." >&2
+            exit 1
+          fi
+          lowest=$(printf '%s\n%s\n' "22.14.0" "$node_have" | sort -V | head -n 1)
+          if [ "$lowest" != "22.14.0" ]; then
+            echo "node $node_have is older than 22.14.0, which staged publishing needs." >&2
+            exit 1
+          fi
           if [ -z "$NPM_TOKEN" ]; then
-            # A Trusted Publisher logs in through OIDC, which npm supports from 11.5.1.
-            lowest=$(printf '%s\n%s\n' "11.5.1" "$have" | sort -V | head -n 1)
-            if [ "$lowest" != "11.5.1" ]; then
-              echo "npm $have is older than 11.5.1, which publishing through a Trusted Publisher needs; set the secret NPM_TOKEN or use a newer Node." >&2
-              exit 1
-            fi
+            # A Trusted Publisher logs in through OIDC, which npm supports from 11.5.1 (11.15.0 above already covers it).
+            echo "no NPM_TOKEN: the Trusted Publisher of the package logs in through OIDC"
           fi
 
       - name: Install (no install scripts)
@@ -183,7 +198,7 @@ jobs:
       - name: Tests
         run: npm test
 
-      # `npm publish --ignore-scripts` skips `prepack`, the guard of the package that refuses a dist built without the API URL,
+      # `npm stage publish --ignore-scripts` skips `prepack`, the guard of the package that refuses a dist built without the API URL,
       # so the same guard runs here, and the dist inside the tarball that would be uploaded is searched too: `npm pack` alone
       # (without the build with ESPRESSO_API_URL) makes a tarball whose dist still holds __ESPRESSO_API_URL__, and every client
       # of it would call a host that does not exist. Only `package/dist/` is searched: SECURITY.md and README.md explain the
@@ -205,16 +220,35 @@ jobs:
           done
           echo "no placeholder in dist or in the tarball"
 
-      - name: Publish with provenance
+      # Stages, never publishes: the version is not public until a maintainer approves it with 2FA (see the header).
+      - name: Stage with provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          # A tag publishes for real; a manual run follows its dry_run input (default: true).
+          # A tag stages for real; a manual run follows its dry_run input (default: true).
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
         run: |
           set -euo pipefail
+          name=$(node -p "require('./package.json').name")
+          version=$(node -p "require('./package.json').version")
           args=(--provenance --access public --ignore-scripts)
           if [ "$DRY_RUN" = "true" ]; then
             args+=(--dry-run)
             echo "dry run: nothing is uploaded"
           fi
-          npm publish "${args[@]}"
+          npm stage publish "${args[@]}"
+          if [ "$DRY_RUN" = "true" ]; then
+            {
+              echo "### Dry run of $name@$version"
+              echo
+              echo "Nothing was staged and nothing is public."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "### $name@$version is staged, not public"
+              echo
+              echo "The workflow only stages. The version is public only after a maintainer approves it with 2FA:"
+              echo
+              echo "1. On npmjs.com open https://www.npmjs.com/package/$name, the tab **Staged Packages**, and click **Approve**."
+              echo "2. Or from a terminal: \`npm stage list $name\` shows the stage id, then \`npm stage approve <stage-id>\`."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi

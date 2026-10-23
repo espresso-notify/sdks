@@ -22,7 +22,7 @@
  */
 
 /** The version of this package; `package.json` says the same (a test keeps the two equal). */
-export const SDK_VERSION = "0.0.1";
+export const SDK_VERSION = "0.0.2";
 
 /** The two calls that are remembered. */
 export type RegistrationKind = "register" | "identify";

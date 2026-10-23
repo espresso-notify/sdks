@@ -1,0 +1,8 @@
+# Native projects come from `@react-native-community/cli init` (see README); never committed.
+/ios/
+/android/
+/Gemfile
+/Gemfile.lock
+/.bundle/
+/vendor/
+/.tmp-native/

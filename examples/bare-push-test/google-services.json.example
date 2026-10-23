@@ -1,0 +1,3 @@
+{
+  "_comment": "Placeholder. Download the real google-services.json from Firebase Console → Project settings → your Android app, then place it (renamed, without .example) at android/app/google-services.json after running the native scaffold step in the README."
+}

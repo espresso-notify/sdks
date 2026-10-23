@@ -1,5 +1,7 @@
 # Espresso Notify React Native SDK
 
+[Website](https://espressonotify.com) · [Documentation](https://docs.espressonotify.com/docs/react-native) · [Dashboard](https://espressonotify.com/login) · [Changelog](https://docs.espressonotify.com/docs/support#sdk-changelog) · [Repository](https://github.com/espresso-notify/sdks)
+
 Official SDK for integrating [Espresso Notify](https://espressonotify.com) push notifications into **Expo** and **bare React Native** apps.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -50,8 +52,6 @@ The SDK detects which libraries are available at runtime via `require` and selec
 ---
 
 ## Installation
-
-> **Coming soon.** `@espresso-notify/react-native` is not published to npm yet: it will be published at launch, and until then `npm install` answers 404. The commands below are what you will run once it is out.
 
 ### Setup wizard
 

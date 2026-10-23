@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "Espresso Push Test (Expo)",
+    "slug": "espresso-push-test-expo",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "bundleIdentifier": "com.espresso.pushtest.expo",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.espresso.pushtest.expo"
+    },
+    "plugins": [
+      [
+        "@espresso-notify/react-native",
+        {
+          "apsEnvironment": "development",
+          "enableBackgroundRemoteNotifications": true,
+          "androidPostNotifications": true
+        }
+      ],
+      "./plugins/with-scene-lifecycle",
+      "expo-secure-store"
+    ],
+    "scheme": "espresso-acceptance"
+  }
+}

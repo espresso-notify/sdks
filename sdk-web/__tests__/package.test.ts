@@ -37,8 +37,9 @@ describe("manifest", () => {
     expect(manifest.version).toMatch(/^\d+\.\d+\.\d+$/);
     expect(manifest.description).toMatch(/Web Push/);
     expect(manifest.license).toBe("MIT");
-    // The repository, bugs and homepage name the public mirror (D-137); scripts/test_publish_sdk_workflow.py pins the exact name.
-    expect(manifest.homepage).toMatch(/^https:\/\/github\.com\/[^/]+\/[^/]+\/tree\/main\/sdk-web#readme$/);
+    // The repository and bugs name the public mirror (D-137); scripts/test_publish_sdk_workflow.py pins the exact name.
+    // The homepage, the button of the npm page, opens the documentation of this SDK.
+    expect(manifest.homepage).toBe("https://docs.espressonotify.com/docs/sdks/web");
     expect(manifest.repository).toEqual(
       expect.objectContaining({ type: "git", url: expect.stringMatching(/^git\+https:\/\/github\.com\/[^/]+\/[^/]+\.git$/), directory: "sdk-web" }),
     );
@@ -79,6 +80,21 @@ describe("files of the manifest", () => {
   });
 });
 
+describe("README links", () => {
+  it("starts with the links of the site, the documentation of this SDK, the dashboard, the changelog and the repository", () => {
+    const top = readme.split("\n").slice(0, 6).join("\n");
+    for (const link of [
+      "(https://espressonotify.com)",
+      "(https://docs.espressonotify.com/docs/sdks/web)",
+      "(https://espressonotify.com/login)",
+      "(https://docs.espressonotify.com/docs/support#sdk-changelog)",
+      "(https://github.com/espresso-notify/sdks)",
+    ]) {
+      expect(top).toContain(link);
+    }
+  });
+});
+
 describe("CHANGELOG", () => {
   const changelog = readFileSync(join(ROOT, "CHANGELOG.md"), "utf-8");
 
@@ -86,13 +102,21 @@ describe("CHANGELOG", () => {
     expect(changelog).toMatch(/^# Changelog$/m);
     expect(changelog).toContain("https://keepachangelog.com");
     expect(changelog).toMatch(/^## Unreleased$/m);
-    const unreleased = changelog.slice(changelog.search(/^## Unreleased$/m));
+    const unreleased = changelog.slice(changelog.search(/^## Unreleased$/m), changelog.search(/^## 0\.0\.1 - /m));
     expect(unreleased.split("\n").slice(0, 6).join("\n")).toContain(`\`${manifest.version}\``);
-    expect(unreleased).toMatch(/^### Added$/m);
+    expect(unreleased).toMatch(/^### Changed$/m);
+  });
+
+  it("keeps the first release as its own section, dated, with what it added", () => {
+    expect(changelog).toMatch(/^## 0\.0\.1 - \d{4}-\d{2}-\d{2}$/m);
+    const first = changelog.slice(changelog.search(/^## 0\.0\.1 - /m));
+    expect(first).toMatch(/^### Added$/m);
+    expect(changelog.search(/^## Unreleased$/m)).toBeLessThan(changelog.search(/^## 0\.0\.1 - /m));
   });
 
   it("keeps the package at the version the changelog and the README of the SDK agree on", () => {
-    expect(manifest.version).toBe("0.0.1");
+    expect(manifest.version).toBe("0.0.2");
+    expect(require("../src/registration").SDK_VERSION).toBe(manifest.version);
   });
 
   it("has a line for every public method of the client and for the other public names", () => {

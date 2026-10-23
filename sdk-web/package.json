@@ -1,6 +1,6 @@
 {
   "name": "@espresso-notify/web",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Web Push SDK for Espresso Notify: subscribe a browser, identify the user and receive notifications through a service worker.",
   "keywords": [
     "push",
@@ -25,7 +25,7 @@
   "bugs": {
     "url": "https://github.com/espresso-notify/sdks/issues"
   },
-  "homepage": "https://github.com/espresso-notify/sdks/tree/main/sdk-web#readme",
+  "homepage": "https://docs.espressonotify.com/docs/sdks/web",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {

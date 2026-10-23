@@ -2,20 +2,34 @@
 
 Open source SDKs of [Espresso Notify](https://espressonotify.com), a push notification platform for iOS, Android and the web.
 
-| Folder | Package | For |
-| ------ | ------- | --- |
-| [`sdk/`](sdk) | `@espresso-notify/react-native` | iOS and Android apps built with Expo or React Native |
-| [`sdk-web/`](sdk-web) | `@espresso-notify/web` | browsers: subscribe, identify the user and receive notifications through a service worker |
+| Folder | Package | For | Links |
+| ------ | ------- | --- | ----- |
+| [`sdk/`](sdk) | [`@espresso-notify/react-native`](https://www.npmjs.com/package/@espresso-notify/react-native) | iOS and Android apps built with Expo or React Native | [Documentation](https://docs.espressonotify.com/docs/react-native) |
+| [`sdk-web/`](sdk-web) | [`@espresso-notify/web`](https://www.npmjs.com/package/@espresso-notify/web) | browsers: subscribe, identify the user and receive notifications through a service worker | [Documentation](https://docs.espressonotify.com/docs/sdks/web) |
+
+[Website](https://espressonotify.com) · [Documentation](https://docs.espressonotify.com) · [Dashboard](https://espressonotify.com/login) · [SDK changelog](https://docs.espressonotify.com/docs/support#sdk-changelog)
 
 Both are MIT licensed. The documentation is at [docs.espressonotify.com](https://docs.espressonotify.com), and each folder has its own README.
 
+## Examples
+
+Three small apps show each SDK end to end. Each one has a README with the steps, and each README says how to use the npm package instead of the folder of this repository.
+
+| Folder | Shows | Guide |
+| ------ | ----- | ----- |
+| [`examples/web-push-test/`](examples/web-push-test) | a plain Vite page that subscribes a browser, identifies a user and lists what it receives | [Web quickstart](https://docs.espressonotify.com/docs/sdks/web/quickstart) |
+| [`examples/expo-push-test/`](examples/expo-push-test) | an Expo development build with the `usePushNotifications` hook | [Expo quickstart](https://docs.espressonotify.com/docs/react-native/expo) |
+| [`examples/bare-push-test/`](examples/bare-push-test) | a React Native CLI app with Firebase Cloud Messaging | [React Native CLI guide](https://docs.espressonotify.com/docs/react-native/bare) |
+
+[`examples/react-native-integration.ts`](examples/react-native-integration.ts) is a short file with the hook and the client side by side.
+
 ## Status
 
-**The packages are not published on npm yet.** This page and the install commands in the READMEs describe the first publication, version `0.0.1`. Until the packages are on npm, `npm install @espresso-notify/react-native` and `npm install @espresso-notify/web` fail with a 404.
+**The packages are published on npm** from version `0.0.1`: `npm install @espresso-notify/react-native` and `npm install @espresso-notify/web`. Each version is published from this repository, with an npm provenance statement.
 
 ## What this repository is
 
-This is a **read-only mirror**. The code of the SDKs is developed in a private repository together with the Espresso Notify service, and a workflow copies the two SDK folders here, one way, with each commit. That has three consequences:
+This is a **read-only mirror**. The code of the SDKs is developed in a private repository together with the Espresso Notify service, and a workflow copies the two SDK folders and the example apps here, one way, with each commit. That has three consequences:
 
 - Files in this repository are replaced on every sync. A pull request cannot be merged here, because the next sync would overwrite it. Open an issue instead and describe the change you want.
 - Every commit here carries the subject of the commit it came from (never its body), and a `Monorepo-Commit:` line with its hash.

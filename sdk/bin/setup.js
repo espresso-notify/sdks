@@ -886,7 +886,7 @@ async function run(argv, io) {
       out(`      Running: ${command}`);
       // `expo install` rewrites app.json / app.config.json on its own when it adds the plugins of the packages: keep the bytes.
       const snapshots = snapshotJsonConfigs(fsm, pathm, io.cwd);
-      const code = await new Promise((resolve) => {
+      const runInstall = () => new Promise((resolve) => {
         let child;
         try {
           child = io.spawn(...installInvocation(io.platform, io.env), {
@@ -902,6 +902,23 @@ async function run(argv, io) {
         child.on('error', (spawnError) => resolve(spawnError));
         child.on('close', (exitCode) => resolve(exitCode));
       });
+      let code = await runInstall();
+      if (typeof code === 'number' && code !== 0) {
+        // With npm, an `expo install` that has to move react or react-native to the versions of the Expo SDK can end the
+        // `npm install` well and then die: npm moves @expo/cli to another folder while the CLI is still running, and the CLI
+        // cannot load its last step (D-229). The packages are in package.json and only the plugins the CLI adds to the config
+        // are missing. A config written as code is the other reason for such an exit, and a second run changes nothing there.
+        // The second run finds the tree settled and finishes. It is the same command: no flag, no variable.
+        const left = stillMissing();
+        const codeConfig = findFile(listFolder(fsm, io.cwd), ['app.config.js', 'app.config.ts', 'app.config.mjs', 'app.config.cjs']);
+        if (left && left.length === 0 && !codeConfig) {
+          out(
+            `      \`expo install\` exited with code ${code} after the packages were installed. With npm this happens when it moves react or react-native ` +
+            'to the versions of your Expo SDK: the CLI is moved while it runs and cannot add the config plugins. Running it again (the same command):',
+          );
+          code = await runInstall();
+        }
+      }
       for (const rewritten of restoreJsonConfigs(snapshots, fsm, pathm)) {
         const name = rewritten.name;
         if (rewritten.gone && rewritten.problems.length === 0) {

@@ -13,6 +13,26 @@ const NAME = '@espresso-notify/react-native';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const manifest = require('../package.json');
 
+describe('links', () => {
+  it('opens the documentation of this SDK from the Homepage button of the npm page', () => {
+    expect(manifest.homepage).toBe('https://docs.espressonotify.com/docs/react-native');
+  });
+
+  it('starts the README with the links of the site, the documentation, the dashboard, the changelog and the repository', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const top = require('fs').readFileSync(join(SDK, 'README.md'), 'utf-8').split('\n').slice(0, 6).join('\n');
+    for (const link of [
+      '(https://espressonotify.com)',
+      '(https://docs.espressonotify.com/docs/react-native)',
+      '(https://espressonotify.com/login)',
+      '(https://docs.espressonotify.com/docs/support#sdk-changelog)',
+      '(https://github.com/espresso-notify/sdks)',
+    ]) {
+      expect(top).toContain(link);
+    }
+  });
+});
+
 describe('exports (SDKFIX-02)', () => {
   let app: string;
 

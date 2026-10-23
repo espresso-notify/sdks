@@ -10,7 +10,7 @@ This repository is a one-way mirror of the two SDKs of Espresso Notify, `@espres
 
 ## Verify a package
 
-The packages are not published on npm yet. From the first publication on, each version is published by the workflow [`publish-sdk.yml`](.github/workflows/publish-sdk.yml) of this repository, from a tag (`react-native-v<version>` or `web-v<version>`) on a commit of `main`, with `npm publish --provenance` and no token on a developer machine.
+Each version is published by the workflow [`publish-sdk.yml`](.github/workflows/publish-sdk.yml) of this repository, from a tag (`react-native-v<version>` or `web-v<version>`) on a commit of `main`, with `npm stage publish --provenance` and no token on a developer machine. The workflow only stages a version: a maintainer approves it on npmjs.com with two-factor authentication, and only then is it public.
 
 1. In your app, `npm audit signatures` checks the registry signature and the provenance attestation of every installed package (npm 9.5 or newer). The npm page of a version shows "Built and signed on GitHub Actions" and links to the commit and the run. If the attestation names another repository, another workflow or a commit that is not on `main`, do not use that version.
 2. Check out the tag, then `cd sdk && npm ci --ignore-scripts && npm run verify:dist` (or `sdk-web`). The check rebuilds `dist` in a temporary copy and fails if any file differs, is missing or is extra.

@@ -15,13 +15,13 @@ The package also writes nothing sensitive to a log or to an error message: no pu
 
 ## Status
 
-**The package is not published on npm yet.** Until it is, there is no provenance to check, and you read and build the code from the public mirror, https://github.com/espresso-notify/sdks. The steps below are what applies from the first publication on.
+**The package is published on npm** as `@espresso-notify/react-native`, from version `0.0.1`, by the public mirror, https://github.com/espresso-notify/sdks. The steps below verify a version you installed.
 
 The mirror is a one-way copy of the repository where the SDK is developed together with the Espresso Notify service, made on every change. Each commit in the mirror carries the subject of the commit it came from and a `Monorepo-Commit:` line with its hash. The package is built and published **from the mirror**, which is public so that npm can sign the provenance of each version.
 
 ## Verify the package you installed
 
-1. **Provenance and signatures.** The package is published by the workflow `.github/workflows/publish-sdk.yml` of the public mirror, with `npm publish --provenance`, from GitHub Actions, with an OIDC identity and no token on a developer machine. In your app, after installing:
+1. **Provenance and signatures.** The package is staged by the workflow `.github/workflows/publish-sdk.yml` of the public mirror, with `npm stage publish --provenance`, from GitHub Actions, with an OIDC identity and no token on a developer machine. The workflow cannot make a version public: a maintainer approves each staged version on npmjs.com with two-factor authentication. In your app, after installing:
 
    ```bash
    npm audit signatures
