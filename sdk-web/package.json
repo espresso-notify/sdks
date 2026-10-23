@@ -1,6 +1,6 @@
 {
   "name": "@espresso-notify/web",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "description": "Web Push SDK for Espresso Notify: subscribe a browser, identify the user and receive notifications through a service worker.",
   "keywords": [
     "push",

@@ -4,7 +4,7 @@ All notable changes to `@espresso-notify/web` are listed here. The format follow
 
 ## Unreleased
 
-The package is not published yet. The `package.json` is at `0.1.0`, so everything below is what the first release, `0.1.0`, will contain. When it is published this section becomes `0.1.0` with the date, and a new Unreleased section opens above it.
+The package is not published yet. The `package.json` is at `0.0.1`, so everything below is what the first release, `0.0.1`, will contain. When it is published this section becomes `0.0.1` with the date, and a new Unreleased section opens above it.
 
 ### Added
 

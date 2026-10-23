@@ -1,6 +1,6 @@
 {
   "name": "@espresso-notify/react-native",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "description": "Official Espresso Notify SDK by CaffeeeLabs. Easily integrate Espresso Notify into your Expo / React Native apps.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

@@ -92,7 +92,7 @@ describe("CHANGELOG", () => {
   });
 
   it("keeps the package at the version the changelog and the README of the SDK agree on", () => {
-    expect(manifest.version).toBe("0.1.0");
+    expect(manifest.version).toBe("0.0.1");
   });
 
   it("has a line for every public method of the client and for the other public names", () => {
