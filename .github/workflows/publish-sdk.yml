@@ -10,17 +10,23 @@ name: Publish SDK to npm (provenance)
 # npmjs.com (the package page, tab "Staged Packages", button "Approve") or with `npm stage approve <stage-id>`
 # (`npm stage list <package>` shows the id). Approving needs a person; no token or OIDC identity can do it.
 #
-# Nothing runs until the owner of the repository sets up what is below, and no tag has been created or `npm stage publish` run from it:
+# What each condition below does (each is a condition the repository must keep, but they do not all stop a run the same way):
 #   1. npm: own the `@espresso-notify` scope and turn on 2FA. Then EITHER register this workflow (`publish-sdk.yml`, environment
 #      `npm-publish`) as the "Trusted Publisher" of each package on npm, allowing only `npm stage publish` (no token; needs npm
 #      11.15.0 or newer, which the job checks), OR create a granular token for the two packages and store it as the secret `NPM_TOKEN`
-#      of the environment `npm-publish` (staging works with any token type). Both packages must already exist on npm.
+#      of the environment `npm-publish` (staging works with any token type). Both packages must already exist on npm. Without a
+#      Trusted Publisher or a token, the login or the stage step fails and nothing is staged.
 #   2. GitHub: create the environment `npm-publish` (Settings > Environments) with required reviewers, limited to the branch `main`
-#      and to the tags `react-native-v*` and `web-v*`.
-#   3. GitHub: create the repository variable `NPM_PUBLISH_ENABLED` with the value `true`. Without it the `select` job does not run
-#      and nothing is published.
+#      and to the tags `react-native-v*` and `web-v*`. This is what makes a person approve each run before the job starts. The
+#      workflow does not check it: if the environment does not exist, GitHub creates it on the first run with no required reviewers,
+#      so a run would go ahead with no approval. Configure it before turning on item 3.
+#   3. GitHub: create the repository variable `NPM_PUBLISH_ENABLED` with the value `true`. Without it the `select` job is skipped
+#      and the `publish` job, which needs it, never starts.
 #   4. `repository.url` of both `package.json` files must be this repository (npm refuses the provenance otherwise). The step
 #      "Check the tag, the version and the repository" fails with the explanation while it is not, and also while this repository is private.
+#
+# Staging is not publishing: even when every item is in place, the version stays on npm, not public, until a maintainer approves it
+# on npmjs.com with 2FA (see above). That approval does not depend on any GitHub setting.
 #
 # How to use it once set up:
 #   - By hand: Actions > "Publish SDK to npm" > Run workflow, on `main`. `dry_run` is ON by default: everything runs and ends in

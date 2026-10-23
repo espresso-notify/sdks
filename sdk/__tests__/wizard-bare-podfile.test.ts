@@ -122,11 +122,23 @@ describe('podfile: the stock block of the template', () => {
 });
 
 describe('podfile: what it recognizes as already done', () => {
-  // The example app lives in the private monorepo only; the public SDK mirror (D-137) has no examples/ to read.
+  // The guard keeps the suite green in a copy without examples/. Where examples/ exists the test runs; scripts/test_publish_sdk_workflow.py pins that.
   const EXAMPLE_PODFILE = join(__dirname, '..', '..', 'examples', 'bare-push-test', 'native', 'ios', 'Podfile');
+  // Only the monorepo has backend/go.mod. It is looked up from the directory jest runs in, not from the path of the example, so a
+  // wrong example path cannot hide itself: in the monorepo the example must exist and the guarded test must run.
+  const inMonorepo = [process.cwd(), join(process.cwd(), '..')].some((dir) => existsSync(join(dir, 'backend', 'go.mod')));
+  let guardedTestRan = false;
   (existsSync(EXAMPLE_PODFILE) ? it : it.skip)('the Podfile of the example (use_frameworks! :linkage => :dynamic at the top, no marker)', () => {
+    guardedTestRan = true;
     const text = readFileSync(EXAMPLE_PODFILE, 'utf8');
     expect(podfile(text, {})).toEqual({ status: 'already' });
+  });
+
+  it('finds the example in the monorepo and runs the guarded test there', () => {
+    if (inMonorepo) {
+      expect(existsSync(EXAMPLE_PODFILE)).toBe(true);
+    }
+    expect(guardedTestRan).toBe(existsSync(EXAMPLE_PODFILE));
   });
 
   it.each([

@@ -96,11 +96,20 @@ describe('the README and SECURITY.md say what the private transport does and doe
   });
 });
 
-// The example lives in the private monorepo only: the public SDK mirror (D-137) receives sdk/ and sdk-web/, so there this
-// suite has nothing to read. The monorepo CI runs it.
+// The guard keeps the suite green in a copy of sdk/ without examples/ (a bare checkout of the package). Where examples/ exists,
+// as in the monorepo and in the public mirror, the suite runs; scripts/test_publish_sdk_workflow.py fails if the guard skips there.
 const describeIfExample = existsSync(EXAMPLE) ? describe : describe.skip;
 
+// Only the monorepo has backend/go.mod. It is looked up from the directory jest runs in, not from the path of the example, so a
+// wrong example path cannot hide itself: in the monorepo the example must exist and the guarded tests must run.
+const inMonorepo = [process.cwd(), join(process.cwd(), '..')].some((dir) => existsSync(join(dir, 'backend', 'go.mod')));
+let guardedTestsRan = false;
+
 describeIfExample('examples/react-native-integration.ts (SSF-04.4)', () => {
+  beforeAll(() => {
+    guardedTestsRan = true;
+  });
+
   it('compiles against the source of the SDK with no error, and uses externalId, not userId, in the hook options', () => {
     const options: ts.CompilerOptions = {
       noEmit: true,
@@ -126,5 +135,14 @@ describeIfExample('examples/react-native-integration.ts (SSF-04.4)', () => {
     const source = readFileSync(EXAMPLE, 'utf8');
     expect(source).toMatch(/externalId: userId/);
     expect(source).not.toMatch(/^\s+userId,$/m);
+  });
+});
+
+describe('the example guard', () => {
+  it('finds the example in the monorepo and runs the guarded tests there', () => {
+    if (inMonorepo) {
+      expect(existsSync(EXAMPLE)).toBe(true);
+    }
+    expect(guardedTestsRan).toBe(existsSync(EXAMPLE));
   });
 });

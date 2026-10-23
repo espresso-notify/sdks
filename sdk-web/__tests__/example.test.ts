@@ -21,12 +21,21 @@ function versionedFiles(): string[] {
   return out.split("\n").filter((f) => f && existsSync(join(EXAMPLE, f)));
 }
 
-// The example app lives in the private monorepo only: the public SDK mirror (D-137) receives sdk/ and sdk-web/, so there this
-// suite has nothing to read. scripts/test_publish_sdk_workflow.py fails if the example is missing from the monorepo, so the
-// suite cannot go quiet where it matters.
+// The guard keeps the suite green in a copy of sdk-web/ without examples/ (a bare checkout of the package). Where examples/
+// exists, as in the monorepo and in the public mirror, the suite runs; scripts/test_publish_sdk_workflow.py fails if the example
+// is missing or the guard skips there, so the suite cannot go quiet where it matters.
 const describeIfExample = existsSync(EXAMPLE) ? describe : describe.skip;
 
+// Only the monorepo has backend/go.mod. It is looked up from the directory jest runs in, not from the path of the example, so a
+// wrong example path cannot hide itself: in the monorepo the example must exist and the guarded tests must run.
+const inMonorepo = [process.cwd(), join(process.cwd(), "..")].some((dir) => existsSync(join(dir, "backend", "go.mod")));
+let guardedTestsRan = false;
+
 describeIfExample("examples/web-push-test", () => {
+  beforeAll(() => {
+    guardedTestsRan = true;
+  });
+
   it("is a Vite app that builds with npm run build", () => {
     const pkg = JSON.parse(read("package.json"));
     expect(pkg.private).toBe(true);
@@ -70,5 +79,14 @@ describeIfExample("examples/web-push-test", () => {
     expect(files.filter((f) => f.startsWith(".sdk-build") || f.startsWith("public/push") || f.startsWith("dist/") || f.startsWith("node_modules/"))).toEqual([]);
     const ignore = read(".gitignore");
     for (const entry of [".env", ".sdk-build", "public/push", "node_modules", "dist"]) expect(ignore).toContain(entry);
+  });
+});
+
+describe("the example guard", () => {
+  it("finds the example in the monorepo and runs the guarded tests there", () => {
+    if (inMonorepo) {
+      expect(existsSync(EXAMPLE)).toBe(true);
+    }
+    expect(guardedTestsRan).toBe(existsSync(EXAMPLE));
   });
 });

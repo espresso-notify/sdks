@@ -98,11 +98,23 @@ describe.each(TEMPLATE_VERSIONS)('appDelegate (Swift) on the template of React N
 });
 
 describe('appDelegate (Swift): the example app and the user\'s own configure', () => {
-  // The example app lives in the private monorepo only; the public SDK mirror (D-137) has no examples/ to read.
+  // The guard keeps the suite green in a copy without examples/. Where examples/ exists the test runs; scripts/test_publish_sdk_workflow.py pins that.
   const EXAMPLE_DELEGATE = join(__dirname, '..', '..', 'examples', 'bare-push-test', 'native', 'ios', 'AppDelegate.swift');
+  // Only the monorepo has backend/go.mod. It is looked up from the directory jest runs in, not from the path of the example, so a
+  // wrong example path cannot hide itself: in the monorepo the example must exist and the guarded test must run.
+  const inMonorepo = [process.cwd(), join(process.cwd(), '..')].some((dir) => existsSync(join(dir, 'backend', 'go.mod')));
+  let guardedTestRan = false;
   (existsSync(EXAMPLE_DELEGATE) ? it : it.skip)('the example app of this repository, which already configures guarded, is already without a warning', () => {
+    guardedTestRan = true;
     const example = readFileSync(EXAMPLE_DELEGATE, 'utf8');
     expect(appDelegate(example, SWIFT)).toEqual({ status: 'already' });
+  });
+
+  it('finds the example in the monorepo and runs the guarded test there', () => {
+    if (inMonorepo) {
+      expect(existsSync(EXAMPLE_DELEGATE)).toBe(true);
+    }
+    expect(guardedTestRan).toBe(existsSync(EXAMPLE_DELEGATE));
   });
 
   it('an unguarded FirebaseApp.configure() of the user is already, untouched, with a warning that it aborts without the plist', () => {
