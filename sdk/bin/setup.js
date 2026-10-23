@@ -790,7 +790,7 @@ async function run(argv, io) {
   const pathm = io.path || path;
   // `react-native` without `expo`: the React Native CLI flow takes over before this flow opens its own prompt.
   if (detectProject(io.cwd, fsm, pathm).kind === 'bare') {
-    return runBare(options, io, { makePrompter, Stop, installEnvironment, hookSnippet, PLACEHOLDER_KEY, BARE_GUIDE });
+    return runBare(options, io, { makePrompter, Stop, installEnvironment, keyProblem, hookSnippet, PLACEHOLDER_KEY, BARE_GUIDE });
   }
   const interactive = io.isTTY && !options.yes && !options.dryRun;
   const prompter = interactive ? makePrompter(io.stdin, io.stdout) : null;

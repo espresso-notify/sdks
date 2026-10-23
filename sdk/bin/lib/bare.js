@@ -8,9 +8,12 @@
  *      `react-native-notify-kit` with the package manager of the project, the Firebase major chosen by the version table
  *   3. change the native files that fit in text (Podfile, the two Gradle files, the AppDelegate), each between markers,
  *      with a copy next to it; what the wizard does not recognize is left alone and its step is printed
+ *   4. `pod install` (`bundle exec pod install` with a Gemfile), on macOS only, and only if you say yes or give `--pods`
+ *   5. print the `usePushNotifications` snippet, filled with the public key when one is given (never written to disk)
+ *   6. print what the wizard cannot do (the Firebase files, Xcode, the APNs key, the service account, `index.js`, iOS 27)
  *
  * Exit codes: 0 done, nothing to do, or only steps left for you; 1 refused (not a React Native project, React Native below
- * 0.79 or unreadable, or a no at the confirmation); 2 the install or a write failed.
+ * 0.79 or unreadable, a secret key, or a no at the confirmation); 2 the install, a write or `pod install` failed.
  *
  * Everything that touches the world comes in `io` (folder, `spawn`, streams, `platform`, `env`, optionally `fs`, `path` and
  * `now`), like the Expo flow, so the tests can fake it. No command line holds anything from the project: only constants and
@@ -26,6 +29,7 @@ const { podfile, MANUAL_STEP: PODFILE_STEP } = require('./patchers/podfile.js');
 const { gradleProject, gradleApp, GOOGLE_SERVICES_VERSION } = require('./patchers/gradle.js');
 const { appDelegate } = require('./patchers/appDelegate.js');
 const { MIN_REACT_NATIVE_MINOR, firebaseMajorFor } = require('./versions.js');
+const { manualSteps } = require('./guide.js');
 
 const SDK_PACKAGE = '@espresso-notify/react-native';
 const FIREBASE_APP = '@react-native-firebase/app';
@@ -101,11 +105,11 @@ const NATIVE_FILES = [
  * Runs the flow.
  * @param {{ dryRun: boolean, yes: boolean, key?: string, pods?: boolean }} options
  * @param {{ cwd: string, spawn: Function, stdout: {write: Function}, stderr: {write: Function}, stdin: object, isTTY: boolean, platform: string, env?: object, fs?: object, path?: object, now?: Function }} io
- * @param {{ makePrompter: Function, Stop: Function, installEnvironment: Function }} helpers from `bin/setup.js`
+ * @param {{ makePrompter: Function, Stop: Function, installEnvironment: Function, keyProblem: Function, hookSnippet: Function, PLACEHOLDER_KEY: string, BARE_GUIDE: string }} helpers from `bin/setup.js`
  * @returns {Promise<number>} the exit code
  */
 async function runBare(options, io, helpers) {
-  const { makePrompter, Stop, installEnvironment } = helpers;
+  const { makePrompter, Stop, installEnvironment, keyProblem, hookSnippet, PLACEHOLDER_KEY, BARE_GUIDE } = helpers;
   const out = (text = '') => io.stdout.write(text + '\n');
   const err = (text = '') => io.stderr.write(text + '\n');
   const fsm = io.fs || nodeFs;
@@ -114,6 +118,13 @@ async function runBare(options, io, helpers) {
   const prompter = interactive ? makePrompter(io.stdin, io.stdout) : null;
   const state = { changed: false, failed: false, manual: [], backups: [] };
   const display = (file, fallback) => (file ? pathm.relative(io.cwd, file).split(pathm.sep).join('/') : fallback);
+  const isFile = (file) => {
+    try {
+      return fsm.statSync(file).isFile();
+    } catch (_) {
+      return false;
+    }
+  };
 
   try {
     // 1. Look ---------------------------------------------------------------------------------------------------
@@ -250,8 +261,88 @@ async function runBare(options, io, helpers) {
       }
     }
 
-    // The end ---------------------------------------------------------------------------------------------------
+    // 4. CocoaPods ----------------------------------------------------------------------------------------------
+    out('[4/6] CocoaPods');
+    const podCommand = isFile(pathm.join(io.cwd, 'Gemfile')) ? ['bundle', ['exec', 'pod', 'install']] : ['pod', ['install']];
+    const podText = [podCommand[0], ...podCommand[1]].join(' ');
+    if (!project.hasIos) {
+      out('      There is no ios/ folder: nothing to install.');
+    } else if (io.platform !== 'darwin') {
+      out(`      CocoaPods runs on macOS only. On a Mac, run in ios/: ${podText}`);
+    } else {
+      out('      Do not set USE_FRAMEWORKS=static when you install the pods: React Native Firebase needs dynamic frameworks, and the build breaks.');
+      let runPods = Boolean(options.pods);
+      if (!runPods && prompter) {
+        const answer = (await prompter.ask(`      Run ${podText} now? [y/N] `)).trim().toLowerCase();
+        runPods = answer === 'y' || answer === 'yes';
+      }
+      if (options.dryRun) {
+        out(`      Would run: ${podText} (in ios/${options.pods ? '' : ', only if you answer yes or give --pods'})`);
+      } else if (!runPods) {
+        out(`      Not run. When you are ready, run in ios/: ${podText}`);
+      } else if (String((io.env || {}).USE_FRAMEWORKS || '').trim().toLowerCase() === 'static') {
+        out(`      USE_FRAMEWORKS=static is set in your environment, so the wizard did not run it. Unset it (unset USE_FRAMEWORKS), then run in ios/: ${podText}`);
+      } else {
+        out(`      Running in ios/: ${podText}`);
+        const code = await new Promise((resolve) => {
+          let child;
+          try {
+            child = io.spawn(podCommand[0], podCommand[1], { cwd: pathm.join(io.cwd, 'ios'), stdio: 'inherit', shell: false });
+          } catch (spawnError) {
+            resolve(spawnError);
+            return;
+          }
+          child.on('error', (spawnError) => resolve(spawnError));
+          child.on('close', (exitCode) => resolve(exitCode));
+        });
+        if (code !== 0) {
+          err(
+            `[espresso-notify] ${podText} did not finish${code instanceof Error ? ` (${code.message})` : ` (exit code ${code})`}. ` +
+            `The files above are changed. Run it yourself, in the ios/ folder:\n  ${podText}`,
+          );
+          state.failed = true;
+        } else {
+          state.changed = true;
+        }
+      }
+    }
+
+    // 5. The hook -----------------------------------------------------------------------------------------------
+    out('[5/6] The hook');
+    let key = options.key;
+    if (key === undefined && prompter) {
+      const typed = (await prompter.ask('      Public key of your project (pk_live_... or pk_test_..., Enter to skip): ')).trim();
+      if (typed) {
+        const problem = keyProblem(typed);
+        if (problem) {
+          err(`[espresso-notify] ${problem}`);
+          throw new Stop(1);
+        }
+        key = typed;
+      }
+    }
+    out('      Render this once at the root of the app, inside your auth provider. The key is not saved anywhere:');
     out('');
+    out(hookSnippet(key || PLACEHOLDER_KEY).split('\n').map((line) => (line ? `        ${line}` : line)).join('\n'));
+    out('');
+
+    // 6. What is left -------------------------------------------------------------------------------------------
+    out('[6/6] What the wizard cannot do for you');
+    const appDelegate = project.files.appDelegate;
+    const iosAppDir = appDelegate ? display(pathm.dirname(appDelegate), '') : project.appName ? `ios/${project.appName}` : null;
+    const steps = manualSteps({
+      hasIos: project.hasIos,
+      hasAndroid: project.hasAndroid,
+      iosAppDir,
+      hasGoogleServicesJson: project.hasAndroid && isFile(pathm.join(io.cwd, 'android', 'app', 'google-services.json')),
+      hasPlist: Boolean(iosAppDir) && isFile(pathm.join(io.cwd, ...iosAppDir.split('/'), 'GoogleService-Info.plist')),
+      hasAsyncStorage: Boolean(deps['@react-native-async-storage/async-storage']),
+      guideUrl: BARE_GUIDE,
+    });
+    for (const line of steps) out(line ? `      ${line}` : '');
+    out('');
+
+    // The end ---------------------------------------------------------------------------------------------------
     if (options.dryRun) {
       if (state.manual.length > 0) out(`${state.manual.length} native step${state.manual.length > 1 ? 's' : ''} would be left for you (see above).`);
       out('Dry run: nothing was changed.');

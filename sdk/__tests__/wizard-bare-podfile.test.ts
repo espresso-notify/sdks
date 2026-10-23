@@ -7,7 +7,7 @@
  * the template form and does not stop the patch (owner decision of 2026-10-23, SWB-04.2). Run against the real template
  * files of React Native 0.87.1 and 0.79.7, and through `applyPatch` on a temporary copy.
  */
-import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { addedLines, FIXTURE_ROOT, fixture, onlyAddsLines, TEMPLATE_VERSIONS } from './helpers/bare-fixtures';
@@ -122,8 +122,10 @@ describe('podfile: the stock block of the template', () => {
 });
 
 describe('podfile: what it recognizes as already done', () => {
-  it('the Podfile of the example (use_frameworks! :linkage => :dynamic at the top, no marker)', () => {
-    const text = readFileSync(join(__dirname, '..', '..', 'examples', 'bare-push-test', 'native', 'ios', 'Podfile'), 'utf8');
+  // The example app lives in the private monorepo only; the public SDK mirror (D-137) has no examples/ to read.
+  const EXAMPLE_PODFILE = join(__dirname, '..', '..', 'examples', 'bare-push-test', 'native', 'ios', 'Podfile');
+  (existsSync(EXAMPLE_PODFILE) ? it : it.skip)('the Podfile of the example (use_frameworks! :linkage => :dynamic at the top, no marker)', () => {
+    const text = readFileSync(EXAMPLE_PODFILE, 'utf8');
     expect(podfile(text, {})).toEqual({ status: 'already' });
   });
 
