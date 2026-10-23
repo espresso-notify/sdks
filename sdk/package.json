@@ -62,7 +62,16 @@
     "react-native",
     "caffeeelabs"
   ],
-  "author": "CaffeeeLabs Team",
+  "author": {
+    "name": "Caffeee Labs",
+    "url": "https://espressonotify.com"
+  },
+  "contributors": [
+    {
+      "name": "Andrey Passos",
+      "url": "https://www.npmjs.com/~caffeee"
+    }
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
