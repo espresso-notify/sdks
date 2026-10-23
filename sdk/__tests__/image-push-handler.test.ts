@@ -263,3 +263,7 @@ describe('createNotificationHandler: when it does nothing', () => {
     await expect(handler(androidPush({ image: URL_IMG }))).rejects.toThrow('app handler failed');
   });
 });
+
+// A module, not a script: ts-jest type-checks script files in one shared scope, where two of them declaring the same
+// top-level name fail to compile.
+export {};

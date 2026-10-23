@@ -204,3 +204,7 @@ describe('the bytes of the device id and of the nonce', () => {
     expect(fresh.map.get(KEY)).toMatch(/^[0-9a-f]{32}$/)
   })
 })
+
+// A module, not a script: ts-jest type-checks script files in one shared scope, where two of them declaring the same
+// top-level name fail to compile.
+export {};

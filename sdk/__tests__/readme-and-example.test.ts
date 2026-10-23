@@ -3,7 +3,7 @@
  *
  * sdk-setup-fixes (SSF-04.3, SSF-04.4): what the README of the SDK and the integration example say is true.
  */
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join, resolve } from 'path';
 import * as ts from 'typescript';
 
@@ -96,7 +96,11 @@ describe('the README and SECURITY.md say what the private transport does and doe
   });
 });
 
-describe('examples/react-native-integration.ts (SSF-04.4)', () => {
+// The example lives in the private monorepo only: the public SDK mirror (D-137) receives sdk/ and sdk-web/, so there this
+// suite has nothing to read. The monorepo CI runs it.
+const describeIfExample = existsSync(EXAMPLE) ? describe : describe.skip;
+
+describeIfExample('examples/react-native-integration.ts (SSF-04.4)', () => {
   it('compiles against the source of the SDK with no error, and uses externalId, not userId, in the hook options', () => {
     const options: ts.CompilerOptions = {
       noEmit: true,

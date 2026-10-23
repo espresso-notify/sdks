@@ -7,7 +7,8 @@ import { fakeIndexedDB } from "../test-support/fakeIndexedDB";
 // Mock fetch globally
 global.fetch = jest.fn();
 
-// Mock navigator.serviceWorker
+// Mock navigator.serviceWorker. Node's `navigator` is one object for every test file a jest worker runs, so the mock is
+// configurable and removed after this file: a file that ran later in the same worker could not install its own otherwise.
 Object.defineProperty(global.navigator, "serviceWorker", {
   value: {
     register: jest.fn().mockResolvedValue({
@@ -24,6 +25,10 @@ Object.defineProperty(global.navigator, "serviceWorker", {
     }),
   },
   writable: true,
+  configurable: true,
+});
+afterAll(() => {
+  delete (global.navigator as unknown as Record<string, unknown>).serviceWorker;
 });
 
 // Mock pushManager.subscribe to return a valid-looking subscription

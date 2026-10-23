@@ -103,16 +103,16 @@ describe('detection and refusals (exit 1)', () => {
     expect(r.spawn).not.toHaveBeenCalled();
   });
 
-  it('refuses a project without expo and points to the React Native CLI guide', async () => {
+  // setup-wizard-bare-rn T9: the only assertion of this file that changed. A project with react-native and without expo
+  // used to be refused with a pointer to the manual guide; the wizard now routes it to the React Native CLI flow.
+  it('routes a project without expo and with react-native to the React Native CLI flow', async () => {
     const dir = project({ 'package.json': { name: 'bare', dependencies: { 'react-native': '0.79.0' } } });
-    const before = snapshot(dir);
     const r = await run(['setup'], dir);
 
-    expect(r.code).toBe(1);
     expect(r.all).toContain('React Native CLI');
-    expect(r.all).toContain('https://docs.espressonotify.com/docs/react-native/bare');
-    expect(r.spawn).not.toHaveBeenCalled();
-    expect(snapshot(dir)).toEqual(before);
+    expect(r.all).not.toMatch(/not an Expo project/);
+    expect(r.spawn).toHaveBeenCalledTimes(1);
+    expect(r.spawn.mock.calls[0][0]).toBe('npm');
   });
 
   it('refuses Expo SDK 52 (version read from node_modules) and says the floor', async () => {

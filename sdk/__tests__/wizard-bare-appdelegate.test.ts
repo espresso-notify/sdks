@@ -6,7 +6,7 @@
  * `GoogleService-Info.plist` is in the app (without the file Firebase aborts the launch). In Objective-C (`.mm`) the
  * equivalent. Run against the real template files of React Native 0.87.1 and 0.79.7.
  */
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { addedLines, FIXTURE_ROOT, fixture, onlyAddsLines, TEMPLATE_VERSIONS } from './helpers/bare-fixtures';
@@ -98,8 +98,10 @@ describe.each(TEMPLATE_VERSIONS)('appDelegate (Swift) on the template of React N
 });
 
 describe('appDelegate (Swift): the example app and the user\'s own configure', () => {
-  it('the example app of this repository, which already configures guarded, is already without a warning', () => {
-    const example = readFileSync(join(__dirname, '..', '..', 'examples', 'bare-push-test', 'native', 'ios', 'AppDelegate.swift'), 'utf8');
+  // The example app lives in the private monorepo only; the public SDK mirror (D-137) has no examples/ to read.
+  const EXAMPLE_DELEGATE = join(__dirname, '..', '..', 'examples', 'bare-push-test', 'native', 'ios', 'AppDelegate.swift');
+  (existsSync(EXAMPLE_DELEGATE) ? it : it.skip)('the example app of this repository, which already configures guarded, is already without a warning', () => {
+    const example = readFileSync(EXAMPLE_DELEGATE, 'utf8');
     expect(appDelegate(example, SWIFT)).toEqual({ status: 'already' });
   });
 

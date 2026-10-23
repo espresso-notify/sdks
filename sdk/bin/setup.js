@@ -2,12 +2,15 @@
 'use strict';
 
 /**
- * Espresso Notify setup wizard for Expo apps.
+ * Espresso Notify setup wizard for Expo apps and for React Native CLI apps.
  *
- *   npx @espresso-notify/react-native@latest setup [--dry-run] [--yes] [--key <pk>]
+ *   npx @espresso-notify/react-native@latest setup [--dry-run] [--yes] [--key <pk>] [--pods]
+ *
+ * The folder decides the flow: `expo` in package.json runs the Expo flow below; `react-native` without `expo` runs the
+ * React Native CLI flow (`bin/lib/bare.js`); anything else is refused.
  *
  * Plain Node, no dependency of its own (prompts use `node:readline`). Six steps, each printed as it runs and
- * each idempotent: a second run changes nothing and says so.
+ * each idempotent: a second run changes nothing and says so. The Expo flow:
  *
  *   1. detect an Expo project and its Expo SDK (53 or newer)
  *   2. `npx expo install` the SDK and the Expo packages it reads, so each version matches the project's Expo SDK
@@ -19,8 +22,8 @@
  *   5. print the `usePushNotifications` snippet, filled with the public key when one is given (never written to disk)
  *   6. print what a wizard cannot do (credentials, development build)
  *
- * Exit codes: 0 done or nothing to do; 1 refused (not an Expo project, Expo SDK below 53, a secret key, an unknown
- * option, or a no at the confirmation); 2 a step failed or a manual step is left.
+ * Exit codes: 0 done or nothing to do; 1 refused (neither an Expo nor a React Native project, Expo SDK below 53, a secret
+ * key, an unknown option, or a no at the confirmation); 2 a step failed or a manual step is left.
  *
  * It behaves the same on Linux, macOS and Windows: every path is built with `path.join`, a file name is matched without
  * regard to case, a file is written back with the line ending (and the byte order mark) it had, and on Windows `npx`
@@ -35,6 +38,13 @@ const path = require('node:path');
 const readline = require('node:readline');
 const childProcess = require('node:child_process');
 
+// The modules of the React Native CLI flow sit in bin/lib/ and ship with the package. They are loaded by path, not by a
+// literal relative require, because the test of ES-09 AC 1 reads every literal require of this file and accepts only
+// Node built-ins (no third-party package): nothing outside the package and Node is loaded.
+const lib = (name) => require(path.join(__dirname, 'lib', name));
+const { runBare } = lib('bare.js');
+const { detectProject } = lib('project.js');
+
 const PLUGIN = '@espresso-notify/react-native';
 const EXPO_PACKAGES = ['expo-notifications', 'expo-constants', 'expo-device', 'expo-application', 'expo-localization', 'expo-secure-store'];
 const INSTALL_ARGS = ['expo', 'install', PLUGIN, ...EXPO_PACKAGES];
@@ -44,21 +54,26 @@ const WINDOWS_CMD = 'C:\\Windows\\System32\\cmd.exe';
 const BARE_GUIDE = 'https://docs.espressonotify.com/docs/react-native/bare';
 const PLACEHOLDER_KEY = 'pk_live_xxxxxxxxxxxx';
 
-const USAGE = `Espresso Notify setup for Expo apps
+const USAGE = `Espresso Notify setup for Expo and React Native apps
 
 Usage: npx @espresso-notify/react-native@latest setup [options]
+
+The app decides what the wizard does: an Expo app (expo in package.json) gets the Expo setup, a React Native CLI app
+(react-native without expo, React Native ${'0.79'} or newer) gets the React Native CLI setup.
 
 Options:
   --dry-run     print what the wizard would do and change nothing
   --yes, -y     do not ask anything (for CI)
   --key <pk>    the public key of your project (pk_live_... or pk_test_...)
+  --pods        React Native CLI apps on macOS: run \`pod install\` without asking (with --yes it is only printed unless you give --pods)
   --help, -h    print this text
 
 Exit codes:
-  0  done, or nothing to do
-  1  refused: not an Expo project, Expo SDK below ${MIN_EXPO_SDK}, a secret key (sk_), an unknown option, or you said no
-  2  a step failed, or a step is left for you (the plugin of an app.config.js / app.config.ts, an app.json with comments or one
-     the wizard cannot extend without changing your values)
+  0  done, or nothing to do (for a React Native CLI app, also when a native file is left for you and its step is printed)
+  1  refused: neither an Expo nor a React Native project, Expo SDK below ${MIN_EXPO_SDK} or React Native below 0.79, a secret key (sk_), an
+     unknown option, or you said no
+  2  a step failed (the install, a write, \`pod install\`), or, for an Expo app, a step is left for you (the plugin of an
+     app.config.js / app.config.ts, an app.json with comments or one the wizard cannot extend without changing your values)
 `;
 
 /** Thrown to end the run with an exit code after the message was printed. */
@@ -71,16 +86,17 @@ class Stop extends Error {
 
 /**
  * @param {string[]} argv arguments after the program name (`setup`, flags)
- * @returns {{ help: boolean, dryRun: boolean, yes: boolean, key?: string, error?: string }}
+ * @returns {{ help: boolean, dryRun: boolean, yes: boolean, pods: boolean, key?: string, error?: string }}
  */
 function parseArgs(argv) {
-  const options = { help: false, dryRun: false, yes: false };
+  const options = { help: false, dryRun: false, yes: false, pods: false };
   const args = argv.filter((a, i) => !(i === 0 && a === 'setup'));
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
     if (arg === '--help' || arg === '-h') options.help = true;
     else if (arg === '--dry-run') options.dryRun = true;
     else if (arg === '--yes' || arg === '-y') options.yes = true;
+    else if (arg === '--pods') options.pods = true;
     else if (arg === '--key') {
       options.key = args[i + 1];
       i += 1;
@@ -772,6 +788,10 @@ async function run(argv, io) {
 
   const fsm = io.fs || fs;
   const pathm = io.path || path;
+  // `react-native` without `expo`: the React Native CLI flow takes over before this flow opens its own prompt.
+  if (detectProject(io.cwd, fsm, pathm).kind === 'bare') {
+    return runBare(options, io, { makePrompter, Stop, installEnvironment, hookSnippet, PLACEHOLDER_KEY, BARE_GUIDE });
+  }
   const interactive = io.isTTY && !options.yes && !options.dryRun;
   const prompter = interactive ? makePrompter(io.stdin, io.stdout) : null;
   // `manual` holds the steps the wizard could not do and the person must; with one left the run is not "done".
@@ -812,8 +832,9 @@ async function run(argv, io) {
     const deps = { ...(pkg.devDependencies || {}), ...(pkg.dependencies || {}) };
     if (!deps.expo) {
       err(
-        '[espresso-notify] This is not an Expo project: `expo` is not in package.json.\n' +
-        `For a React Native CLI app follow the manual guide: ${BARE_GUIDE}`,
+        '[espresso-notify] This is neither an Expo nor a React Native project: neither `expo` nor `react-native` is in package.json. ' +
+        'Run the wizard from the root folder of your app.\n' +
+        `For the manual steps see the guide: ${BARE_GUIDE}`,
       );
       throw new Stop(1);
     }
@@ -1193,6 +1214,11 @@ module.exports = {
   isJson5Like,
   scanJson,
   addPluginsToJsonText,
+  makePrompter,
+  Stop,
+  hookSnippet,
+  PLACEHOLDER_KEY,
+  BARE_GUIDE,
 };
 
 if (require.main === module) {

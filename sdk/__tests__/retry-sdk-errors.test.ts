@@ -51,3 +51,7 @@ describe('what register and identify throw', () => {
     expect(isRetryable(await failure(() => client.devices.identify({ externalId: 'u1', metadata: { big: 'x'.repeat(5000) } })))).toBe(false)
   })
 })
+
+// A module, not a script: ts-jest type-checks script files in one shared scope, where two of them declaring the same
+// top-level name fail to compile.
+export {};

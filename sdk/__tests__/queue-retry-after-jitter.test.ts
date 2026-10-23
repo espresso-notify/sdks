@@ -71,3 +71,7 @@ describe('the Retry-After wait of the queue', () => {
     expect(await secondsUntilResend(1, 86_400)).toBe(3600)
   })
 })
+
+// A module, not a script: ts-jest type-checks script files in one shared scope, where two of them declaring the same
+// top-level name fail to compile.
+export {};

@@ -317,3 +317,7 @@ describe('requirePinning follows the pins of the path of the client (SPT-39)', (
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 });
+
+// A module, not a script: ts-jest type-checks script files in one shared scope, where two of them declaring the same
+// top-level name fail to compile.
+export {};

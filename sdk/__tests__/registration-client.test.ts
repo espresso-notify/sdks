@@ -49,3 +49,7 @@ describe('PushClient.registration', () => {
     expect([...two.store.map.keys()].filter((k) => k.startsWith('espresso.registration'))).toEqual([])
   })
 })
+
+// A module, not a script: ts-jest type-checks script files in one shared scope, where two of them declaring the same
+// top-level name fail to compile.
+export {};
