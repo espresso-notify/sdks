@@ -53,15 +53,17 @@ The SDK detects which libraries are available at runtime via `require` and selec
 
 > **Coming soon.** `@espresso-notify/react-native` is not published to npm yet: it will be published at launch, and until then `npm install` answers 404. The commands below are what you will run once it is out.
 
-### Setup wizard (Expo)
+### Setup wizard
 
-In an Expo app (Expo SDK 53 or newer) one command does the install and the config plugin:
+The same command sets up an Expo app (Expo SDK 53 or newer) and a React Native CLI app (`react-native` without `expo`, React Native 0.79 or newer); the folder decides which. In an Expo app it does the install and the config plugin:
 
 ```bash
 npx @espresso-notify/react-native@latest setup
 ```
 
-It runs `npx expo install` for the SDK and the six Expo packages, adds the config plugin to `app.json` or `app.config.json` (it never edits `app.config.js` / `app.config.ts`: when the file does not mention the plugin, and no `app.json` that lists it is spread into it with `...config`, it prints the line, says `1 manual step left` and exits with `2`; when the file mentions the plugin, or spreads the `config` of an `app.json` that lists it, it asks you to check it and exits with `0`, and never says the project is set up), checks `extra.eas.projectId`, refuses a secret key (`sk_`), prints the `usePushNotifications` snippet and the manual checklist (Firebase file and FCM V1 key, APNs key, development build). Flags: `--dry-run` (change nothing), `--yes` (ask nothing, for CI) and `--key <pk>`. Exit codes: `0` done or nothing to do, `1` refused, `2` a step failed or a step is left for you. It runs the same on Linux, macOS and Windows. A second run changes nothing and says so. The manual steps follow.
+It runs `npx expo install` for the SDK and the six Expo packages, adds the config plugin to `app.json` or `app.config.json` (it never edits `app.config.js` / `app.config.ts`: when the file does not mention the plugin, and no `app.json` that lists it is spread into it with `...config`, it prints the line, says `1 manual step left` and exits with `2`; when the file mentions the plugin, or spreads the `config` of an `app.json` that lists it, it asks you to check it and exits with `0`, and never says the project is set up), checks `extra.eas.projectId`, refuses a secret key (`sk_`), prints the `usePushNotifications` snippet and the manual checklist (Firebase file and FCM V1 key, APNs key, development build). In a React Native CLI app it installs `@espresso-notify/react-native`, `@react-native-firebase/app`, `@react-native-firebase/messaging` and `react-native-notify-kit` with the package manager of the project (the lock file decides; major 26 of the two Firebase packages for React Native 0.80 or newer, major 25 for 0.79), and adds the Firebase lines to `ios/Podfile` (`use_frameworks! :linkage => :dynamic`), `android/build.gradle` and `android/app/build.gradle` (the `google-services` Gradle plugin) and `AppDelegate.swift` or `.mm` (`FirebaseApp.configure()`, guarded so the app opens before `GoogleService-Info.plist` is in it). Each change sits between `espresso-notify:begin` and `espresso-notify:end` comments, the original is copied next to the file as `<file>.espresso-notify-<timestamp>.bak` first, and a file the wizard does not recognize is left alone with its step printed (exit code `0`). On macOS it asks before it runs `pod install` (`--pods` runs it without asking). It prints what stays yours: the two Firebase files (the Android build fails until `google-services.json` is in place), the Xcode capabilities, the APNs key, the service account, the background handler in `index.js` and the iOS 27 scene life cycle. It was run on 2026-10-23 on apps of the React Native 0.87.1 template (iOS 27 simulator and Android emulator) and of the 0.79.7 template (Android emulator).
+
+Flags: `--dry-run` (change nothing), `--yes` (ask nothing, for CI), `--key <pk>` and `--pods`. Exit codes: `0` done or nothing to do, `1` refused, `2` a step failed or a step is left for you. The Expo flow runs the same on Linux, macOS and Windows; the React Native CLI flow was run on macOS only. A second run changes nothing and says so. The manual steps follow.
 
 ### Base package
 
@@ -276,6 +278,8 @@ npx expo prebuild
 ## Bare React Native Quickstart
 
 In bare React Native (no `expo-notifications`), the SDK auto-detects `@react-native-firebase/messaging` and `react-native-notify-kit`.
+
+The [setup wizard](#setup-wizard) does the install and the native Firebase edits for you; the steps below are the same setup by hand.
 
 **1. Set up Firebase in your project** following the [RNFirebase getting started guide](https://rnfirebase.io/). Place `google-services.json` (Android) and `GoogleService-Info.plist` (iOS) in your project.
 

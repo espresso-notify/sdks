@@ -148,7 +148,7 @@ describe('appDelegate (Swift): what it refuses', () => {
   it('a file without didFinishLaunchingWithOptions', () => {
     const result = appDelegate('import UIKit\n\nclass AppDelegate {\n}\n', SWIFT);
     expect(result.status).toBe('unsupported');
-    expect(result.reason).toMatch(/didFinishLaunchingWithOptions/);
+    expect(result.reason).toBe('there is no `didFinishLaunchingWithOptions` method to start Firebase in');
   });
 
   it('a file without any import to put FirebaseCore next to', () => {

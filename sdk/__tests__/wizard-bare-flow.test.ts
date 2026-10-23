@@ -258,7 +258,8 @@ describe('the packages: the Firebase major follows React Native', () => {
     expect(cmd).toBe(manager);
     expect(args.slice(0, lead.length)).toEqual(lead);
     expect(args.slice(lead.length)).toHaveLength(4);
-    expect(result.out).toContain(manager);
+    // the detection line names the manager on its own, apart from the install command line
+    expect(result.out).toMatch(new RegExp(`React Native CLI project, React Native \\S+ \\((?:installed|from package\\.json)\\), ${manager}\\.`));
   });
 
   it('a package already in package.json is left out of the command', async () => {
@@ -432,6 +433,17 @@ describe('the native files', () => {
     expect(result.all).toMatch(/left for you|by hand/i);
     expect(readdirSync(join(dir, 'ios')).filter((n) => n.endsWith('.bak'))).toEqual([]);
     expect(readFileSync(join(dir, 'android/build.gradle'), 'utf8')).toContain('espresso-notify:begin');
+  });
+
+  it('a file left alone prints its reason once, with a single full stop at the end', async () => {
+    const dir = app();
+    const podfile = join(dir, 'ios', 'Podfile');
+    writeFileSync(podfile, readFileSync(podfile, 'utf8').replace(/linkage = ENV\['USE_FRAMEWORKS'\][\s\S]*?\nend\n/, 'use_frameworks! :linkage => :static\n'));
+    const result = await run({ yes: true }, dir);
+    const line = result.out.split('\n').find((l) => l.includes('ios/Podfile: left alone'));
+    expect(line).toBeDefined();
+    expect(line).not.toMatch(/\.\.\s*$/);
+    expect(line).toMatch(/[^.]\.\s*$/);
   });
 
   it('a Kotlin DSL Gradle file is left alone and its step is printed', async () => {

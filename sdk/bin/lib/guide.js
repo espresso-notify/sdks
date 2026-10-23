@@ -42,6 +42,7 @@ function manualSteps(state) {
     bullet(
       `Android: put google-services.json in ${ANDROID_GOOGLE_SERVICES}.`,
       'Get it in the Firebase console: Project settings, Your apps, your Android app, Download google-services.json.',
+      'The Android build fails until the file is there: the google-services Gradle plugin the wizard added needs it.',
     );
   }
   if (state.hasIos && !state.hasPlist) {

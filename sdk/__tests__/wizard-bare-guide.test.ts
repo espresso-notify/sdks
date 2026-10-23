@@ -123,6 +123,12 @@ describe('the Firebase files', () => {
     expect(result.out).toMatch(/Firebase console/);
   });
 
+  it('says that the Android build stops until google-services.json is in place', async () => {
+    const dir = app();
+    const result = await run({}, dir);
+    expect(result.out).toMatch(/Android build (fails|stops) until/);
+  });
+
   it('with both files in place they are not asked for', async () => {
     const dir = app({ files: { 'android/app/google-services.json': '{}', 'ios/HelloWorld/GoogleService-Info.plist': '<plist/>' } });
     const result = await run({}, dir);
@@ -163,10 +169,15 @@ describe('the steps the wizard does not do', () => {
     expect(result.out).toContain(GUIDE);
   });
 
-  it('the Android 13 notification permission comes with react-native-notify-kit', async () => {
+  it('the Android 13 notification permission comes with react-native-notify-kit (D-246: the manifest is not edited)', async () => {
     const result = await run({}, app());
-    expect(result.out).toContain('android.permission.POST_NOTIFICATIONS');
-    expect(result.out).toContain('react-native-notify-kit');
+    expect(result.out).toContain('the notification permission android.permission.POST_NOTIFICATIONS comes with react-native-notify-kit;');
+    expect(result.out).toContain('if you removed that package, add <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>');
+  });
+
+  it('a project without android/ gets no step about the Android notification permission', async () => {
+    const result = await run({}, app({ android: false }));
+    expect(result.out).not.toContain('POST_NOTIFICATIONS');
   });
 
   it('the steps are in English', async () => {

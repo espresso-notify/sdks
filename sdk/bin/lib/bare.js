@@ -255,7 +255,7 @@ async function runBare(options, io, helpers) {
         state.failed = true;
       } else {
         const step = spec.step(rel);
-        out(`      ${rel}: left alone, ${result.reason}.`);
+        out(`      ${rel}: left alone, ${String(result.reason).replace(/\.\s*$/, '')}.`);
         if (!String(result.reason).includes(step)) out(`      By hand: ${step}`);
         state.manual.push(`${rel}: ${step}`);
       }
