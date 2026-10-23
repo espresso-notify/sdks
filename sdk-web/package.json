@@ -1,0 +1,79 @@
+{
+  "name": "@espresso-notify/web",
+  "version": "0.1.0",
+  "description": "Web Push SDK for Espresso Notify: subscribe a browser, identify the user and receive notifications through a service worker.",
+  "keywords": [
+    "push",
+    "notifications",
+    "web-push",
+    "webpush",
+    "vapid",
+    "service-worker",
+    "pwa",
+    "espresso",
+    "notify",
+    "sdk",
+    "caffeeelabs"
+  ],
+  "author": "CaffeeeLabs Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/espresso-notify/sdks.git",
+    "directory": "sdk-web"
+  },
+  "bugs": {
+    "url": "https://github.com/espresso-notify/sdks/issues"
+  },
+  "homepage": "https://github.com/espresso-notify/sdks/tree/main/sdk-web#readme",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./sw.js": "./dist/sw.js",
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "espresso-notify-web": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "SECURITY.md",
+    "CHANGELOG.md"
+  ],
+  "sideEffects": [
+    "./dist/sw.js",
+    "./dist/cli.js"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc && tsc -p tsconfig.sw.json && node inject-url.mjs",
+    "build:sw": "tsc -p tsconfig.sw.json && node inject-url.mjs",
+    "test": "jest",
+    "verify:dist": "node ../scripts/verify-dist.mjs .",
+    "pack:check": "npm pack --dry-run --ignore-scripts",
+    "prepack": "node ../scripts/verify-dist.mjs --no-placeholder .",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "jest": "^29.0.0",
+    "ts-jest": "^29.0.0",
+    "@types/jest": "^29.0.0",
+    "@types/node": "^20.0.0"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node"
+  }
+}

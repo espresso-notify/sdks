@@ -1,0 +1,71 @@
+// The native transport of the Espresso Notify SDK for Android (sdk-private-transport).
+//
+// A plain React Native library: no dependency of its own. OkHttp comes with `react-android` (the module builds its own
+// client from it and never takes React Native's), the SDK levels come from the root project of the app, and the
+// codegen of the New Architecture runs through the React Native Gradle plugin when `newArchEnabled` is true.
+// `android/` is autolinked: the app needs no Gradle line and no `MainApplication` change.
+
+buildscript {
+    ext.getExtOrDefault = { name ->
+        rootProject.ext.has(name) ? rootProject.ext.get(name) : project.properties["EspressoNotifyTransport_" + name]
+    }
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+def isNewArchitectureEnabled() {
+    return project.hasProperty("newArchEnabled") && project.property("newArchEnabled") == "true"
+}
+
+// The Android Gradle Plugin 9 compiles Kotlin itself; the Kotlin plugin is only for the ones before it.
+def androidGradlePluginMajor() {
+    try {
+        return Integer.parseInt(com.android.Version.ANDROID_GRADLE_PLUGIN_VERSION.split("\\.")[0])
+    } catch (Throwable ignored) {
+        return 0
+    }
+}
+
+apply plugin: "com.android.library"
+if (androidGradlePluginMajor() < 9 || project.findProperty("android.builtInKotlin") == "false") {
+    apply plugin: "kotlin-android"
+}
+
+if (isNewArchitectureEnabled()) {
+    apply plugin: "com.facebook.react"
+}
+
+android {
+    namespace "com.espressonotify.transport"
+
+    compileSdkVersion getExtOrDefault("compileSdkVersion").toInteger()
+
+    defaultConfig {
+        minSdkVersion getExtOrDefault("minSdkVersion").toInteger()
+        targetSdkVersion getExtOrDefault("targetSdkVersion").toInteger()
+    }
+
+    lint {
+        disable "GradleCompatible"
+    }
+}
+
+repositories {
+    google()
+    mavenCentral()
+}
+
+dependencies {
+    // The version comes from the app's React Native; so does the OkHttp that this artifact brings.
+    implementation "com.facebook.react:react-android"
+}
+
+if (isNewArchitectureEnabled()) {
+    react {
+        jsRootDir = file("../src/native/")
+        libraryName = "EspressoNotifyTransportSpec"
+        codegenJavaPackageName = "com.espressonotify.transport"
+    }
+}

@@ -1,0 +1,9 @@
+{
+  "endpoint": "https://fcm.googleapis.com/fcm/send/golden-browser",
+  "p256dh": "BAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQ",
+  "auth": "BwcHBwcHBwcHBwcHBwcHBw",
+  "external_id": "user-42",
+  "name": "Ada Lovelace",
+  "identity_hash": "c0eb724b61fed6022986001348600b44793f06919bbb69d71c830f36ed9bceef",
+  "timezone": "America/Sao_Paulo"
+}

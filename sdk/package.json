@@ -1,0 +1,162 @@
+{
+  "name": "@espresso-notify/react-native",
+  "version": "0.1.0",
+  "description": "Official Espresso Notify SDK by CaffeeeLabs. Easily integrate Espresso Notify into your Expo / React Native apps.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "espresso-notify": "bin/setup.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./hooks": {
+      "types": "./dist/hooks.d.ts",
+      "default": "./dist/hooks.js"
+    },
+    "./app.plugin.js": "./app.plugin.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "app.plugin.js",
+    "SECURITY.md",
+    "android",
+    "ios",
+    "EspressoNotifyTransport.podspec",
+    "src/native"
+  ],
+  "codegenConfig": {
+    "name": "EspressoNotifyTransportSpec",
+    "type": "modules",
+    "jsSrcsDir": "src/native",
+    "android": {
+      "javaPackageName": "com.espressonotify.transport"
+    },
+    "ios": {
+      "modulesProvider": {
+        "EspressoNotifyTransport": "EspressoNotifyTransport"
+      }
+    }
+  },
+  "scripts": {
+    "clean": "rm -rf dist *.tgz",
+    "build": "npm run clean && tsc && node inject-url.mjs",
+    "test": "jest",
+    "verify:dist": "node ../scripts/verify-dist.mjs .",
+    "prepack": "node ../scripts/verify-dist.mjs --no-placeholder .",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "expo",
+    "push",
+    "notifications",
+    "notificação",
+    "espresso",
+    "notify",
+    "cms",
+    "sdk",
+    "react-native",
+    "caffeeelabs"
+  ],
+  "author": "CaffeeeLabs Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/espresso-notify/sdks.git",
+    "directory": "sdk"
+  },
+  "bugs": {
+    "url": "https://github.com/espresso-notify/sdks/issues"
+  },
+  "homepage": "https://github.com/espresso-notify/sdks/tree/main/sdk#readme",
+  "peerDependencies": {
+    "@react-native-async-storage/async-storage": ">=1.24.0",
+    "@react-native-firebase/app-check": ">=20.5.0 <26",
+    "@react-native-firebase/messaging": ">=20.5.0",
+    "expo": ">=53.0.0",
+    "expo-application": ">=6.1.0",
+    "expo-constants": ">=17.1.0",
+    "expo-crypto": ">=14.1.0",
+    "expo-device": ">=7.1.0",
+    "expo-localization": ">=16.1.0",
+    "expo-notifications": ">=0.31.0",
+    "expo-secure-store": ">=14.2.0",
+    "react": ">=19.0.0",
+    "react-native": ">=0.79.0",
+    "react-native-ios-appattest": ">=0.10.0",
+    "react-native-notify-kit": ">=9.7.0",
+    "react-native-secure-sign": ">=0.0.2",
+    "react-native-ssl-public-key-pinning": ">=1.2.6"
+  },
+  "peerDependenciesMeta": {
+    "@react-native-async-storage/async-storage": {
+      "optional": true
+    },
+    "@react-native-firebase/app-check": {
+      "optional": true
+    },
+    "@react-native-firebase/messaging": {
+      "optional": true
+    },
+    "expo": {
+      "optional": true
+    },
+    "expo-application": {
+      "optional": true
+    },
+    "expo-constants": {
+      "optional": true
+    },
+    "expo-crypto": {
+      "optional": true
+    },
+    "expo-device": {
+      "optional": true
+    },
+    "expo-localization": {
+      "optional": true
+    },
+    "expo-notifications": {
+      "optional": true
+    },
+    "expo-secure-store": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "react-native-ios-appattest": {
+      "optional": true
+    },
+    "react-native-notify-kit": {
+      "optional": true
+    },
+    "react-native-secure-sign": {
+      "optional": true
+    },
+    "react-native-ssl-public-key-pinning": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.2",
+    "@types/jest": "^29.5.11",
+    "@types/node": "^20.0.0",
+    "@types/react": "^19.2.14",
+    "expo-application": "*",
+    "expo-device": "*",
+    "expo-localization": "*",
+    "expo-notifications": "*",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^30.3.0",
+    "ts-jest": "^29.1.1",
+    "typescript": "5.9.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

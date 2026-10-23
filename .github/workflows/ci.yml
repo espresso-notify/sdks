@@ -1,0 +1,90 @@
+name: CI
+
+# Runs in the public SDK repository: the jest suites of both packages, and proof that the committed `dist` is what the
+# source builds to. This file is copied here from the private monorepo on every sync; do not edit it here, the next sync
+# replaces it.
+#
+# `dist-reproducible` rebuilds `sdk/dist` and `sdk-web/dist` from `src` (`scripts/verify-dist.mjs`) and fails if the
+# committed `dist` is not, byte for byte, what the code builds to. The build is deterministic (`typescript` is pinned to an
+# exact version; the code is readable, not obfuscated). Anyone who clones the repository can run the same check:
+# `cd sdk && npm ci --ignore-scripts && npm run verify:dist`.
+# `sdk/__tests__/committed-dist.test.ts`, inside the jest suite of `sdk`, fails if a `dist` points to a development URL.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sdk-jest:
+    name: sdk (React Native) jest
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: sdk
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: sdk/package-lock.json
+      - run: npm ci
+      - name: Run jest (includes committed-dist.test.ts)
+        run: npm test
+
+  sdk-web-jest:
+    name: sdk-web jest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: sdk-web
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: sdk-web/package-lock.json
+      - run: npm ci
+      - name: Run jest
+        run: npm test
+
+  dist-reproducible:
+    name: tracked dist equals the rebuilt source (${{ matrix.package }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [sdk, sdk-web]
+    defaults:
+      run:
+        working-directory: ${{ matrix.package }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: ${{ matrix.package }}/package-lock.json
+      # --ignore-scripts: the build needs only tsc and the URL injection, both plain JavaScript.
+      - run: npm ci --ignore-scripts
+      - name: Rebuild from source and compare with the tracked dist
+        run: npm run verify:dist

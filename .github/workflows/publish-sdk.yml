@@ -1,0 +1,220 @@
+name: Publish SDK to npm (provenance)
+
+# Publishes the two SDK packages to npm WITH provenance (`npm publish --provenance`, signed by GitHub through OIDC) from the code
+# of this public repository and from a `dist` that the job rebuilds and compares. Provenance is the reason this repository is public:
+# npm only signs it for a public source repository, and the statement links each published version to the commit and the run.
+# This file is copied here from the private monorepo on every sync; do not edit it here, the next sync replaces it.
+#
+# Nothing runs until the owner of the repository sets up what is below, and no tag has been created or `npm publish` run from it:
+#   1. npm: own the `@espresso-notify` scope and turn on 2FA. Then EITHER register this workflow (`publish-sdk.yml`, environment
+#      `npm-publish`) as the "Trusted Publisher" of each package on npm (no token; needs npm 11.5.1 or newer, which the job checks),
+#      OR create a granular publish token for the two packages and store it as the secret `NPM_TOKEN` of the environment `npm-publish`.
+#   2. GitHub: create the environment `npm-publish` (Settings > Environments) with required reviewers, limited to the branch `main`
+#      and to the tags `react-native-v*` and `web-v*`.
+#   3. GitHub: create the repository variable `NPM_PUBLISH_ENABLED` with the value `true`. Without it the `select` job does not run
+#      and nothing is published.
+#   4. `repository.url` of both `package.json` files must be this repository (npm refuses the provenance otherwise). The step
+#      "Check the tag, the version and the repository" fails with the explanation while it is not, and also while this repository is private.
+#
+# How to use it once set up:
+#   - By hand: Actions > "Publish SDK to npm" > Run workflow, on `main`. `dry_run` is ON by default: everything runs and ends in
+#     `npm publish --dry-run`. Turn it off to publish for real.
+#   - By tag: `git tag react-native-v0.0.1` or `git tag web-v0.0.1` (the version of the tag must be the one in `package.json`) and
+#     `git push origin <tag>`. A tag publishes for real, after the environment approves.
+#
+# Each publication checks the tag, the version, the repository and that the commit is on `main`, installs with
+# `npm ci --ignore-scripts`, runs `npm run verify:dist` (the committed `dist` must be the build of `src`), the tests and a check that
+# neither `dist` nor the tarball holds the API URL placeholder, and only then runs `npm publish --provenance --ignore-scripts`
+# (the verified `dist` is what is uploaded; `prepublishOnly` rebuilds nothing).
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: 'Which package to publish'
+        type: choice
+        options:
+          - react-native
+          - web
+        required: true
+      dry_run:
+        description: 'Dry run: do everything except the final upload'
+        type: boolean
+        default: true
+  push:
+    tags:
+      - 'react-native-v[0-9]*'
+      - 'web-v[0-9]*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-sdk
+  cancel-in-progress: false
+
+jobs:
+  # Decides what to publish. Without the variable NPM_PUBLISH_ENABLED the job does not even run (inert workflow).
+  select:
+    name: select the package
+    if: vars.NPM_PUBLISH_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+    steps:
+      - id: pick
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_PACKAGE: ${{ inputs.package }}
+        run: |
+          set -euo pipefail
+          rn='[{"name":"react-native","dir":"sdk","prefix":"react-native-v"}]'
+          web='[{"name":"web","dir":"sdk-web","prefix":"web-v"}]'
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            case "$INPUT_PACKAGE" in
+              react-native) pick="$rn" ;;
+              web) pick="$web" ;;
+              *) echo "unknown package: $INPUT_PACKAGE" >&2; exit 1 ;;
+            esac
+          else
+            case "$REF_NAME" in
+              react-native-v[0-9]*) pick="$rn" ;;
+              web-v[0-9]*) pick="$web" ;;
+              *) echo "tag $REF_NAME is not a release tag" >&2; exit 1 ;;
+            esac
+          fi
+          echo "matrix=$pick" >> "$GITHUB_OUTPUT"
+
+  publish:
+    name: publish ${{ matrix.name }}
+    needs: select
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Protected environment: required reviewers and the NPM_TOKEN secret (if a token is used) live here.
+    environment: npm-publish
+    permissions:
+      contents: read
+      id-token: write # OIDC: signs the provenance (and is the login of the Trusted Publisher, if used)
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.select.outputs.matrix) }}
+    defaults:
+      run:
+        working-directory: ${{ matrix.dir }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # needs the history to prove that the commit is on main
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          # no npm cache here: a cache written by the CI of the mirror must not feed the job that publishes
+
+      - name: Check the tag, the version and the repository
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          TAG_PREFIX: ${{ matrix.prefix }}
+          REPOSITORY: ${{ github.repository }}
+          REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          name=$(node -p "require('./package.json').name")
+          echo "package: $name@$version"
+
+          if [ "$EVENT_NAME" = "push" ]; then
+            expected="${REF_NAME#"$TAG_PREFIX"}"
+            if [ "$version" != "$expected" ]; then
+              echo "tag $REF_NAME says $expected but package.json says $version" >&2
+              exit 1
+            fi
+          fi
+
+          # npm signs provenance only for a public repository.
+          if [ "$REPOSITORY_PRIVATE" != "false" ]; then
+            echo "This repository is not public (private=$REPOSITORY_PRIVATE): npm does not sign provenance for a private repository." >&2
+            exit 1
+          fi
+
+          # npm rejects a provenance statement whose source repository differs from package.json.
+          url=$(node -p "((require('./package.json').repository || {}).url || '')")
+          norm=$(printf '%s' "$url" | sed -E 's#^git\+##; s#\.git$##; s#^git@github\.com:#https://github.com/#' | tr 'A-Z' 'a-z')
+          want=$(printf 'https://github.com/%s' "$REPOSITORY" | tr 'A-Z' 'a-z')
+          if [ "$norm" != "$want" ]; then
+            echo "package.json repository.url is '$url' but this repository is $want." >&2
+            echo "Align repository.url with the GitHub repository (or move the code) before publishing: npm refuses the provenance otherwise." >&2
+            exit 1
+          fi
+
+          git fetch --quiet origin main
+          if ! git merge-base --is-ancestor "$COMMIT" origin/main; then
+            echo "commit $COMMIT is not on main; publish only what is on main" >&2
+            exit 1
+          fi
+
+      - name: Check the npm version when no token is used
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          have=$(npm --version)
+          echo "npm $have"
+          if [ -z "$NPM_TOKEN" ]; then
+            # A Trusted Publisher logs in through OIDC, which npm supports from 11.5.1.
+            lowest=$(printf '%s\n%s\n' "11.5.1" "$have" | sort -V | head -n 1)
+            if [ "$lowest" != "11.5.1" ]; then
+              echo "npm $have is older than 11.5.1, which publishing through a Trusted Publisher needs; set the secret NPM_TOKEN or use a newer Node." >&2
+              exit 1
+            fi
+          fi
+
+      - name: Install (no install scripts)
+        run: npm ci --ignore-scripts
+
+      - name: The tracked dist is what the source builds to
+        run: npm run verify:dist
+
+      - name: Tests
+        run: npm test
+
+      # `npm publish --ignore-scripts` skips `prepack`, the guard of the package that refuses a dist built without the API URL,
+      # so the same guard runs here, and the dist inside the tarball that would be uploaded is searched too: `npm pack` alone
+      # (without the build with ESPRESSO_API_URL) makes a tarball whose dist still holds __ESPRESSO_API_URL__, and every client
+      # of it would call a host that does not exist. Only `package/dist/` is searched: SECURITY.md and README.md explain the
+      # guard and may name the placeholder, and they cannot make a client call anything.
+      - name: No API URL placeholder in dist or in the tarball
+        run: |
+          set -euo pipefail
+          node ../scripts/verify-dist.mjs --no-placeholder .
+          out=$(mktemp -d)
+          npm pack --ignore-scripts --silent --pack-destination "$out" > /dev/null
+          for tarball in "$out"/*.tgz; do
+            unpacked=$(mktemp -d)
+            tar -xzf "$tarball" -C "$unpacked" package/dist
+            found=$(grep -rl '__ESPRESSO_API_URL__' "$unpacked/package/dist" || true)
+            if [ -n "$found" ]; then
+              echo "$tarball holds the placeholder __ESPRESSO_API_URL__ in dist; build with ESPRESSO_API_URL=https://api.espressonotify.com npm run build and commit the dist" >&2
+              exit 1
+            fi
+          done
+          echo "no placeholder in dist or in the tarball"
+
+      - name: Publish with provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # A tag publishes for real; a manual run follows its dry_run input (default: true).
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
+        run: |
+          set -euo pipefail
+          args=(--provenance --access public --ignore-scripts)
+          if [ "$DRY_RUN" = "true" ]; then
+            args+=(--dry-run)
+            echo "dry run: nothing is uploaded"
+          fi
+          npm publish "${args[@]}"
