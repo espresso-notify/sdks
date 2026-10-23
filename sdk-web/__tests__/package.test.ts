@@ -98,13 +98,15 @@ describe("README links", () => {
 describe("CHANGELOG", () => {
   const changelog = readFileSync(join(ROOT, "CHANGELOG.md"), "utf-8");
 
-  it("follows Keep a Changelog and has an Unreleased section that names the version of the manifest", () => {
+  it("follows Keep a Changelog, with an Unreleased section on top and a dated section for the version of the manifest", () => {
     expect(changelog).toMatch(/^# Changelog$/m);
     expect(changelog).toContain("https://keepachangelog.com");
     expect(changelog).toMatch(/^## Unreleased$/m);
-    const unreleased = changelog.slice(changelog.search(/^## Unreleased$/m), changelog.search(/^## 0\.0\.1 - /m));
-    expect(unreleased.split("\n").slice(0, 6).join("\n")).toContain(`\`${manifest.version}\``);
-    expect(unreleased).toMatch(/^### Changed$/m);
+    const current = new RegExp(`^## ${manifest.version.replace(/\./g, "\\.")} - \\d{4}-\\d{2}-\\d{2}$`, "m");
+    expect(changelog).toMatch(current);
+    expect(changelog.search(/^## Unreleased$/m)).toBeLessThan(changelog.search(current));
+    const section = changelog.slice(changelog.search(current), changelog.search(/^## 0\.0\.1 - /m));
+    expect(section).toMatch(/^### Changed$/m);
   });
 
   it("keeps the first release as its own section, dated, with what it added", () => {

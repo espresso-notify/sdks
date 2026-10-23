@@ -4,13 +4,18 @@ All notable changes to `@espresso-notify/web` are listed here. The format follow
 
 ## Unreleased
 
-The `package.json` is at `0.0.2`, so what is below is what the next release, `0.0.2`, will contain. When it is published this section becomes `0.0.2` with the date, and a new Unreleased section opens above it.
+Nothing yet.
+
+## 0.0.2 - 2026-10-23
+
+The release that opens the documentation from the npm page and names the maintainer. The code of the SDK is the same as in `0.0.1`, except for the version it reports.
 
 ### Changed
 
 - The "Homepage" button of the npm page opens the documentation of the Web SDK, and the README starts with the links of the website, the documentation, the dashboard, the changelog and the repository.
 - The README no longer says that the package is not on npm yet.
 - `SECURITY.md` says that the workflow of the public repository only stages a version, and that a maintainer approves it on npmjs.com with two-factor authentication.
+- The `package.json` names the company as the author and the maintainer as a contributor, so the npm page shows who maintains the package; no e-mail is published.
 
 ## 0.0.1 - 2026-10-23
 
