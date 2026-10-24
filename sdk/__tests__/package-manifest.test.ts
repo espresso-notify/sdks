@@ -107,6 +107,27 @@ describe('peer dependencies (SDKFIX-06)', () => {
   });
 });
 
+describe('the license and the npm search metadata (D-258)', () => {
+  it('is Apache 2.0 from the next release and ships the license and the notice', () => {
+    expect(manifest.license).toBe('Apache-2.0');
+    expect(manifest.files).toEqual(expect.arrayContaining(['LICENSE', 'NOTICE']));
+  });
+
+  it('describes the package with the terms people search for', () => {
+    expect(manifest.description).toMatch(/push notifications for react native and expo/i);
+    expect(manifest.description).toMatch(/FCM and APNs/);
+  });
+
+  it('has npm search keywords only: lowercase, hyphenated, no internal word', () => {
+    expect(manifest.keywords).toEqual(
+      expect.arrayContaining(['push-notifications', 'react-native', 'expo', 'expo-notifications', 'fcm', 'apns', 'ios', 'android']),
+    );
+    for (const internal of ['cms', 'caffeeelabs', 'notificação']) expect(manifest.keywords).not.toContain(internal);
+    for (const keyword of manifest.keywords) expect(keyword).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
+    expect(new Set(manifest.keywords).size).toBe(manifest.keywords.length);
+  });
+});
+
 describe('the native transport in the manifest (sdk-private-transport T16, SPT-58, SPT-61)', () => {
   it('declares the codegen config the module needs', () => {
     expect(manifest.codegenConfig).toEqual({
@@ -122,8 +143,8 @@ describe('the native transport in the manifest (sdk-private-transport T16, SPT-5
     expect(manifest.files).toEqual(
       expect.arrayContaining(['android', 'ios', 'EspressoNotifyTransport.podspec', 'src/native']),
     );
-    expect(manifest.files).toEqual(expect.arrayContaining(['dist', 'bin', 'app.plugin.js', 'SECURITY.md']));
-    expect(manifest.files).toHaveLength(8);
+    expect(manifest.files).toEqual(expect.arrayContaining(['dist', 'bin', 'app.plugin.js', 'SECURITY.md', 'LICENSE', 'NOTICE']));
+    expect(manifest.files).toHaveLength(10);
   });
 
   it('does not ship the native tests', () => {

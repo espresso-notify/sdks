@@ -1,7 +1,7 @@
 /**
  * @jest-environment node
  *
- * D-54: the React Native SDK is open source (MIT) and its code is readable. This guard fails if obfuscation comes back:
+ * D-54: the React Native SDK is open source (Apache 2.0) and its code is readable. This guard fails if obfuscation comes back:
  * the committed `dist` looks obfuscated, the package depends on the obfuscator, or `build` runs an obfuscation step.
  */
 import { existsSync, readFileSync, readdirSync } from 'fs';
@@ -76,9 +76,9 @@ describe('the package does not obfuscate', () => {
 
   // SPEC_AMENDMENT (sdk-private-transport T16, SPT-58): the package also ships the native transport, so `files` gains
   // android, ios, the podspec and the codegen spec folder. The first four entries are unchanged and nothing else is added.
-  it('packs the build, the setup wizard (bin), the Expo plugin, the security note and the native transport only', () => {
+  it('packs the build, the setup wizard (bin), the Expo plugin, the security note, the license and its notice, and the native transport only', () => {
     expect(pkg.files).toEqual([
-      'dist', 'bin', 'app.plugin.js', 'SECURITY.md',
+      'dist', 'bin', 'app.plugin.js', 'SECURITY.md', 'LICENSE', 'NOTICE',
       'android', 'ios', 'EspressoNotifyTransport.podspec', 'src/native',
     ]);
   });

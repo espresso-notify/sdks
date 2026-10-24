@@ -2,9 +2,15 @@
 
 [Website](https://espressonotify.com) · [Documentation](https://docs.espressonotify.com/docs/sdks/web) · [Dashboard](https://espressonotify.com/login) · [Changelog](https://docs.espressonotify.com/docs/support#sdk-changelog) · [Repository](https://github.com/espresso-notify/sdks)
 
+Web push notifications for websites and PWAs in Chrome, Firefox, Edge and Safari, with VAPID keys, one API and a dashboard.
+
+```bash
+npm install @espresso-notify/web
+```
+
 Web Push for [Espresso Notify](https://espressonotify.com): subscribe a browser, link it to a user of your app and receive notifications through a service worker.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 The package is `@espresso-notify/web`. It runs on your site, in the browser of your customer, and talks to the Espresso Notify API with the **public key** (`pk_`) of your project. A secret key (`sk_`) never belongs in a web page.
 
@@ -301,4 +307,4 @@ Every push has to show a notification. The worker does, but a push the browser c
 
 ## License
 
-MIT
+[Apache License 2.0](LICENSE), with a [NOTICE](NOTICE). The name and logo "Espresso Notify" are trademarks and are not licensed under the Apache License. Versions 0.0.1 and 0.0.2 were published under the MIT license; every version after them is Apache 2.0.

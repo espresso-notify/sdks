@@ -1,7 +1,7 @@
 {
   "name": "@espresso-notify/react-native",
-  "version": "0.0.2",
-  "description": "Official Espresso Notify SDK by CaffeeeLabs. Easily integrate Espresso Notify into your Expo / React Native apps.",
+  "version": "0.0.3",
+  "description": "Push notifications for React Native and Expo apps on iOS and Android, through FCM and APNs, with one API and a dashboard.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
@@ -24,6 +24,8 @@
     "bin",
     "app.plugin.js",
     "SECURITY.md",
+    "LICENSE",
+    "NOTICE",
     "android",
     "ios",
     "EspressoNotifyTransport.podspec",
@@ -51,16 +53,27 @@
     "prepublishOnly": "npm run build"
   },
   "keywords": [
-    "expo",
+    "push-notifications",
+    "push-notification",
     "push",
     "notifications",
-    "notificação",
-    "espresso",
-    "notify",
-    "cms",
-    "sdk",
     "react-native",
-    "caffeeelabs"
+    "react-native-push-notifications",
+    "react-native-notifications",
+    "expo",
+    "expo-notifications",
+    "expo-push",
+    "fcm",
+    "firebase-cloud-messaging",
+    "apns",
+    "apple-push-notifications",
+    "ios",
+    "android",
+    "deep-linking",
+    "mobile-engagement",
+    "onesignal-alternative",
+    "espresso-notify",
+    "sdk"
   ],
   "author": {
     "name": "Caffeee Labs",
@@ -72,7 +85,7 @@
       "url": "https://www.npmjs.com/~caffeee"
     }
   ],
-  "license": "MIT",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/espresso-notify/sdks.git",

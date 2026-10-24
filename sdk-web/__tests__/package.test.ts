@@ -35,15 +35,18 @@ describe("manifest", () => {
   it("names the package and says what it is", () => {
     expect(manifest.name).toBe("@espresso-notify/web");
     expect(manifest.version).toMatch(/^\d+\.\d+\.\d+$/);
-    expect(manifest.description).toMatch(/Web Push/);
-    expect(manifest.license).toBe("MIT");
+    expect(manifest.description).toMatch(/web push notifications/i);
+    expect(manifest.license).toBe("Apache-2.0");
     // The repository and bugs name the public mirror (D-137); scripts/test_publish_sdk_workflow.py pins the exact name.
     // The homepage, the button of the npm page, opens the documentation of this SDK.
     expect(manifest.homepage).toBe("https://docs.espressonotify.com/docs/sdks/web");
     expect(manifest.repository).toEqual(
       expect.objectContaining({ type: "git", url: expect.stringMatching(/^git\+https:\/\/github\.com\/[^/]+\/[^/]+\.git$/), directory: "sdk-web" }),
     );
-    expect(manifest.keywords).toEqual(expect.arrayContaining(["web-push", "service-worker", "vapid"]));
+    expect(manifest.keywords).toEqual(expect.arrayContaining(["web-push", "web-push-notifications", "push-notifications", "service-worker", "vapid", "pwa"]));
+    // npm search terms only: no internal word of the project and no keyword of the other SDK.
+    for (const internal of ["cms", "caffeeelabs", "react-native", "expo"]) expect(manifest.keywords).not.toContain(internal);
+    for (const keyword of manifest.keywords) expect(keyword).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
   });
 
   it("publishes a scoped package as public", () => {
@@ -76,7 +79,7 @@ describe("manifest", () => {
 
 describe("files of the manifest", () => {
   it("lists the compiled output and the four documents of the package", () => {
-    expect(manifest.files).toEqual(["dist", "README.md", "LICENSE", "SECURITY.md", "CHANGELOG.md"]);
+    expect(manifest.files).toEqual(["dist", "README.md", "LICENSE", "NOTICE", "SECURITY.md", "CHANGELOG.md"]);
   });
 });
 
@@ -117,7 +120,7 @@ describe("CHANGELOG", () => {
   });
 
   it("keeps the package at the version the changelog and the README of the SDK agree on", () => {
-    expect(manifest.version).toBe("0.0.2");
+    expect(manifest.version).toBe("0.0.3");
     expect(require("../src/registration").SDK_VERSION).toBe(manifest.version);
   });
 
@@ -141,10 +144,11 @@ describe("CHANGELOG", () => {
 });
 
 describe("tarball (npm pack --dry-run)", () => {
-  it("holds the compiled output, the README, the licence, the security note and the changelog, and nothing else", () => {
+  it("holds the compiled output, the README, the licence and its notice, the security note and the changelog, and nothing else", () => {
     expect(packedFiles()).toEqual([
       "CHANGELOG.md",
       "LICENSE",
+      "NOTICE",
       "README.md",
       "SECURITY.md",
       "dist/cli.d.ts",

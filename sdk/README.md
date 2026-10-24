@@ -2,9 +2,15 @@
 
 [Website](https://espressonotify.com) · [Documentation](https://docs.espressonotify.com/docs/react-native) · [Dashboard](https://espressonotify.com/login) · [Changelog](https://docs.espressonotify.com/docs/support#sdk-changelog) · [Repository](https://github.com/espresso-notify/sdks)
 
+Push notifications for React Native and Expo apps on iOS and Android, through FCM and APNs, with one API and a dashboard.
+
+```bash
+npx @espresso-notify/react-native@latest setup
+```
+
 Official SDK for integrating [Espresso Notify](https://espressonotify.com) push notifications into **Expo** and **bare React Native** apps.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 ---
 
@@ -899,4 +905,4 @@ Notifications.addNotificationResponseReceivedListener(response => {
 - **Certificate pinning** is an optional hardening layer, off by default (see above). It protects against man-in-the-middle attacks on rooted/jailbroken devices. See [Certificate Pinning](#certificate-pinning) above.
 - The SDK uses standard TLS for all API calls, through its native module when it is linked and through `fetch` when it is not (see [Private transport](#private-transport)). The private transport keeps the SDK out of the JavaScript development tools; it is not a security boundary, and a proxy or a native profiler still sees the traffic.
 - **No identifier in a URL, none in a log.** The SDK sends no external id and no push token in a URL (`getPreferences` uses a request body), the `path` and the message of an HTTP error never hold a query string, and the only thing it writes to the console is a fixed warning that starts with `[espresso-notify]` and carries no token, identifier, key or payload.
-- **The code is open source (MIT) and readable.** `dist/` is the plain output of `tsc` with the production API URL filled in, with type declarations next to it. Nothing in the SDK is protected by being hard to read, and nothing in it is secret: the project key is public by design, and what protects your integration is on the server and in the options you turn on (request signing with `enableSigning`, device attestation with `enableAttestation`, certificate pinning, and the project's allowed origins/bundle ids). See `SECURITY.md` to verify a package.
+- **The code is open source (Apache 2.0) and readable.** Versions 0.0.1 and 0.0.2 were published under the MIT license; every version after them is Apache 2.0. `dist/` is the plain output of `tsc` with the production API URL filled in, with type declarations next to it. Nothing in the SDK is protected by being hard to read, and nothing in it is secret: the project key is public by design, and what protects your integration is on the server and in the options you turn on (request signing with `enableSigning`, device attestation with `enableAttestation`, certificate pinning, and the project's allowed origins/bundle ids). See `SECURITY.md` to verify a package.

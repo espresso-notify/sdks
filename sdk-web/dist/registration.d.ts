@@ -21,7 +21,7 @@
  * window, a full disk) only means the call runs every time.
  */
 /** The version of this package; `package.json` says the same (a test keeps the two equal). */
-export declare const SDK_VERSION = "0.0.2";
+export declare const SDK_VERSION = "0.0.3";
 /** The two calls that are remembered. */
 export type RegistrationKind = "register" | "identify";
 /** How long the page must be out of sight, or the tab untouched, for the next sight of it to start a new session (30 minutes). */

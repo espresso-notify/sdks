@@ -6,6 +6,16 @@ All notable changes to `@espresso-notify/web` are listed here. The format follow
 
 Nothing yet.
 
+## 0.0.3 - 2026-10-23
+
+The release that licenses the package under the Apache License 2.0 and gives the npm page a new description. The code of the SDK is the same as in `0.0.2`, except for the version it reports.
+
+### Changed
+
+- The license of the package is the Apache License 2.0, with a `NOTICE` file in the package. Versions `0.0.1` and `0.0.2` stay under the MIT license; every version from `0.0.3` on is Apache 2.0.
+- The npm page has a new description and new search keywords, and the README opens with the description and the install command.
+- The README says that `0.0.1` and `0.0.2` were published under the MIT license.
+
 ## 0.0.2 - 2026-10-23
 
 The release that opens the documentation from the npm page and names the maintainer. The code of the SDK is the same as in `0.0.1`, except for the version it reports.

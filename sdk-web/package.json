@@ -1,19 +1,26 @@
 {
   "name": "@espresso-notify/web",
-  "version": "0.0.2",
-  "description": "Web Push SDK for Espresso Notify: subscribe a browser, identify the user and receive notifications through a service worker.",
+  "version": "0.0.3",
+  "description": "Web push notifications for websites and PWAs in Chrome, Firefox, Edge and Safari, with VAPID keys, one API and a dashboard.",
   "keywords": [
+    "web-push",
+    "web-push-notifications",
+    "push-notifications",
     "push",
     "notifications",
-    "web-push",
-    "webpush",
-    "vapid",
+    "browser-notifications",
     "service-worker",
     "pwa",
-    "espresso",
-    "notify",
-    "sdk",
-    "caffeeelabs"
+    "vapid",
+    "javascript",
+    "typescript",
+    "chrome",
+    "firefox",
+    "safari",
+    "edge",
+    "onesignal-alternative",
+    "espresso-notify",
+    "sdk"
   ],
   "author": {
     "name": "Caffeee Labs",
@@ -25,7 +32,7 @@
       "url": "https://www.npmjs.com/~caffeee"
     }
   ],
-  "license": "MIT",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/espresso-notify/sdks.git",
@@ -52,6 +59,7 @@
     "dist",
     "README.md",
     "LICENSE",
+    "NOTICE",
     "SECURITY.md",
     "CHANGELOG.md"
   ],

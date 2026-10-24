@@ -9,7 +9,7 @@ Open source SDKs of [Espresso Notify](https://espressonotify.com), a push notifi
 
 [Website](https://espressonotify.com) · [Documentation](https://docs.espressonotify.com) · [Dashboard](https://espressonotify.com/login) · [SDK changelog](https://docs.espressonotify.com/docs/support#sdk-changelog)
 
-Both are MIT licensed. The documentation is at [docs.espressonotify.com](https://docs.espressonotify.com), and each folder has its own README.
+Both are licensed under the [Apache License 2.0](LICENSE) (see also the [NOTICE](NOTICE)); versions 0.0.1 and 0.0.2 were published under the MIT license. The documentation is at [docs.espressonotify.com](https://docs.espressonotify.com), and each folder has its own README.
 
 ## Examples
 
@@ -45,4 +45,4 @@ Do not open a public issue for a vulnerability. See [`SECURITY.md`](SECURITY.md)
 
 ## License
 
-[MIT](LICENSE).
+[Apache License 2.0](LICENSE). Versions 0.0.1 and 0.0.2 of the packages were published under the MIT license. The name and logo "Espresso Notify" are trademarks and are not licensed under the Apache License (see [NOTICE](NOTICE)).
