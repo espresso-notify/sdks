@@ -1,6 +1,6 @@
 {
   "name": "@espresso-notify/react-native",
-  "version": "0.0.3",
+  "version": "0.1.0",
   "description": "Push notifications for React Native and Expo apps on iOS and Android, through FCM and APNs, with one API and a dashboard.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

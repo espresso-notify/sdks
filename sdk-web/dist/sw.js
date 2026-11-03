@@ -114,19 +114,29 @@ self.addEventListener("push", (event) => {
     const pushEvent = event;
     pushEvent.waitUntil(handlePush(readPayload(pushEvent)));
 });
-async function track(notificationId) {
+const ACTION_ID_REFUSED = new RegExp("[\\p{Cc}\\p{Cf}]", "u");
+function actionIdOf(action) {
+    if (typeof action !== "string" || !action)
+        return undefined;
+    if (Array.from(action).length > 64 || ACTION_ID_REFUSED.test(action))
+        return undefined;
+    return action;
+}
+async function track(notificationId, action) {
     if (typeof notificationId !== "number" || !API_URL || API_URL.startsWith("__"))
         return;
     try {
         const sub = await self.registration.pushManager.getSubscription();
         if (!sub)
             return;
-        await Promise.all(["opened", "clicked"].map((eventType) => fetch(`${API_URL}/v1/notifications/track-web`, {
+        const button = typeof action === "string" && action !== "";
+        const actionId = button ? actionIdOf(action) : undefined;
+        await fetch(`${API_URL}/v1/notifications/track-web`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ notification_id: notificationId, event_type: eventType, endpoint: sub.endpoint }),
+            body: JSON.stringify(Object.assign({ notification_id: notificationId, event_type: button ? "clicked" : "opened", endpoint: sub.endpoint }, (actionId !== undefined ? { action_id: actionId } : {}))),
             keepalive: true,
-        }).catch(() => { })));
+        }).catch(() => { });
     }
     catch (_a) { }
 }
@@ -199,7 +209,7 @@ self.addEventListener("notificationclick", (event) => {
     const { url, notificationId, actions } = (_b = (_a = notifEvent.notification) === null || _a === void 0 ? void 0 : _a.data) !== null && _b !== void 0 ? _b : {};
     const pressed = buttonTarget(notifEvent.action, actions);
     const target = safeTarget(pressed, self.location.origin) ? pressed : url;
-    notifEvent.waitUntil(Promise.all([track(notificationId), openTarget(target), clearAppBadge()]).then(() => undefined));
+    notifEvent.waitUntil(Promise.all([track(notificationId, notifEvent.action), openTarget(target), clearAppBadge()]).then(() => undefined));
 });
 const STATE_DB = "espresso-notify";
 const STATE_STORE = "state";

@@ -31,7 +31,21 @@ export type { ConsentInfo, NotificationPreference };
 export type { PermissionState, SubscribeFailureReason, SubscribeResult, SupportInfo, UnsupportedReason } from "./support";
 export interface IdentifyOptions {
     name?: string;
-    identityHash?: string;
+    /**
+     * The proof of identity: a JWT (ES256) signed by YOUR backend for this user, with the `externalId` as `sub` and the
+     * public id of the project as `aud`. Send it when the project verifies identities. Held in memory only.
+     */
+    identityToken?: string;
+}
+/** What `forgetDevice`, `getPreferences` and `setPreferences` need when the project verifies identities. */
+export interface IdentityCallOptions {
+    /** A JWT signed by YOUR backend for the user of this browser; else the token the client kept from `identify`. */
+    identityToken?: string;
+    /**
+     * The user the token is for, so an expired token can be renewed. Else the one of the last `identify` of this page:
+     * pass it after a page load that did not call `identify`.
+     */
+    externalId?: string;
 }
 export interface SubscribeOptions {
     /**
@@ -50,7 +64,20 @@ export interface WebPushClientOptions {
      * again), so the server learns what changed. Optional.
      */
     appVersion?: string;
+    /**
+     * Asks your page for a new identity token when the API answers 401 `identity_token_expired`: the client calls it
+     * once with the `externalId` of the user, keeps the token it returns in memory, and repeats the call once. Without
+     * it, a call with an expired token fails with that error. A provider that throws, or a repeated call that fails
+     * again, also ends in the error, with no further try. Never called for any other error.
+     */
+    identityTokenProvider?: IdentityTokenProvider;
 }
+/**
+ * Gives the client a new identity token for a user: your page asks YOUR backend, which signs it. The client calls it
+ * with the `externalId` when the API answers 401 `identity_token_expired`, once per expired call (calls of the same
+ * user that expire together share one call), and repeats the call once with what it returns.
+ */
+export type IdentityTokenProvider = (externalId: string) => Promise<string>;
 export declare class WebPushClient {
     private projectId;
     private apiUrl;
@@ -61,6 +88,8 @@ export declare class WebPushClient {
     private registration;
     private subscription;
     private tracker;
+    private identityTokens;
+    private identifiedExternalId;
     constructor(options: WebPushClientOptions);
     private get registrationTracker();
     private registrationParts;
@@ -96,12 +125,14 @@ export declare class WebPushClient {
      * the user (the same value you pass to the React Native SDK); the numeric id
      * Espresso Notify keeps internally is never needed.
      *
-     * `identityHash` is HMAC-SHA256(externalId, project secret) as lower-case hex,
-     * computed by YOUR backend. Send it when the project verifies identities.
+     * `identityToken` is a JWT (ES256) signed by YOUR backend for this user. Send it when the project verifies
+     * identities. When the API answers 401 `identity_token_expired` and the client has an `identityTokenProvider`,
+     * the client asks it for a new token once and repeats the call once; the token is kept in memory only.
      */
     identify(externalId: string, options?: IdentifyOptions): Promise<void>;
     updateMetadata(metadata: Record<string, unknown>): Promise<void>;
     private postSubscription;
+    private postSubscriptionRaw;
     private request;
     unsubscribe(): Promise<void>;
     /**
@@ -111,27 +142,29 @@ export declare class WebPushClient {
      * the record the service worker keeps and cancel the subscription of the browser, so a failed call can be tried
      * again.
      *
-     * When the project asks for the proof of identity, pass `identityHash`: HMAC-SHA256(externalId, project secret)
-     * as lower-case hex, computed by YOUR server. Rejects with `EspressoNotifyError` (`no_subscription`) without
-     * calling the API when the browser has no subscription, and with `EspressoNotifyHttpError` (`status`, `code`)
-     * on any answer outside 2xx, such as 404 `not_found` or 403 `identity_verification_failed`.
+     * When the project asks for the proof of identity, pass `identityToken`: a JWT signed by YOUR server for the user
+     * of this browser (else the client sends the token it kept from `identify`); an expired one is renewed once through
+     * the `identityTokenProvider`, for the user `externalId` or the one of the last `identify`. Rejects with
+     * `EspressoNotifyError` (`no_subscription`) without calling the API when the browser has no subscription, and with
+     * `EspressoNotifyHttpError` (`status`, `code`) on any answer outside 2xx, such as 404 `not_found`, 401
+     * `identity_token_expired` or 403 `identity_verification_failed`. After it succeeds the client forgets every
+     * identity token it kept.
      */
-    forgetDevice(options?: {
-        identityHash?: string;
-    }): Promise<void>;
+    forgetDevice(options?: IdentityCallOptions): Promise<void>;
     /**
      * Reads the category opt-outs of the person this browser is linked to (`identify`). Rejects
      * `EspressoNotifyHttpError` 404 `user_not_found` when `identify` was never called, and `EspressoNotifyError`
-     * (`no_subscription`) without calling the API when the browser has no subscription.
+     * (`no_subscription`) without calling the API when the browser has no subscription. When the project verifies
+     * identities, the call carries `options.identityToken`, else the token the client kept from `identify`.
      */
-    getPreferences(): Promise<NotificationPreference[]>;
+    getPreferences(options?: IdentityCallOptions): Promise<NotificationPreference[]>;
     /**
      * Saves the category opt-outs of the person this browser is linked to: 1 to 50 items, each a
      * `categoryIdentifier` of 1 to 64 bytes and a boolean `optedOut`. The check runs before any call. The API
      * refuses a category that does not exist (`unknown_category`) or that cannot be left
      * (`category_not_opt_outable`). Resolves `{ updated }`. Needs `identify` first (404 `user_not_found` otherwise).
      */
-    setPreferences(preferences: NotificationPreference[]): Promise<{
+    setPreferences(preferences: NotificationPreference[], options?: IdentityCallOptions): Promise<{
         updated: number;
     }>;
     /**
@@ -155,6 +188,7 @@ export declare class WebPushClient {
     private logRefusal;
     private requireSubscription;
     private postJson;
+    private postWithIdentity;
     private httpError;
     onPush(handler: (data: PushPayload) => void): () => void;
     private urlBase64ToUint8Array;

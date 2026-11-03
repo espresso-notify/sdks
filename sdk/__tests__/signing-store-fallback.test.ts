@@ -125,3 +125,5 @@ describe('the signing identity without expo-secure-store (RNV-20, RNV-21)', () =
 });
 
 export {};
+
+// feature: security.secure-storage

@@ -141,3 +141,5 @@ describe('the path of an HTTP error has no query string (SPT-51)', () => {
 });
 
 export {};
+
+// feature: queue.typed-http-error

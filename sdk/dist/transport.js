@@ -9,7 +9,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.NativeTransport = exports.NATIVE_TIMEOUT_MS = exports.SUPPORTED_CONTRACTS = void 0;
+exports.NativeTransport = exports.SDK_HEADER_VALUE = exports.SDK_HEADER = exports.SDK_VERSION = exports.NATIVE_TIMEOUT_MS = exports.SUPPORTED_CONTRACTS = void 0;
 exports.redactPath = redactPath;
 exports.parseRetryAfter = parseRetryAfter;
 exports.buildHttpError = buildHttpError;
@@ -102,6 +102,11 @@ const NATIVE_ERROR_CODES = [
 exports.SUPPORTED_CONTRACTS = [1];
 /** The time the native module gives one request, from the start of the call to the last byte of the answer. */
 exports.NATIVE_TIMEOUT_MS = 30000;
+/** The version of this package; `package.json` says the same (a test keeps the two equal). */
+exports.SDK_VERSION = '0.1.0';
+/** The header that names the SDK and its version on every request, as `react-native/<version>`. */
+exports.SDK_HEADER = 'X-Espresso-SDK';
+exports.SDK_HEADER_VALUE = `react-native/${exports.SDK_VERSION}`;
 /** The name the native module registers under. */
 const NATIVE_MODULE_NAME = 'EspressoNotifyTransport';
 /**
@@ -159,6 +164,7 @@ function flattenHeaders(projectId, extra) {
     const add = (name, value) => merged.set(name.toLowerCase(), [name, value]);
     add('Authorization', `Bearer ${projectId}`);
     add('Content-Type', 'application/json');
+    add(exports.SDK_HEADER, exports.SDK_HEADER_VALUE);
     const plain = extra !== null && typeof extra === 'object' && !Array.isArray(extra) && Object.getPrototypeOf(extra) === Object.prototype;
     if (plain) {
         for (const [name, value] of Object.entries(extra)) {

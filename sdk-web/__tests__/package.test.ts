@@ -120,7 +120,7 @@ describe("CHANGELOG", () => {
   });
 
   it("keeps the package at the version the changelog and the README of the SDK agree on", () => {
-    expect(manifest.version).toBe("0.0.3");
+    expect(manifest.version).toBe("0.1.0");
     expect(require("../src/registration").SDK_VERSION).toBe(manifest.version);
   });
 
@@ -267,7 +267,7 @@ describe("README", () => {
   it("tells what erasure, preferences and consent do in a section of their own, and no longer lists them as missing", () => {
     const section = readme.slice(readme.search(/^## Privacy: consent, preferences and erasure$/m), readme.search(/^## API reference$/m));
     expect(section.length).toBeGreaterThan(500);
-    for (const word of ["forgetDevice(", "getPreferences(", "setPreferences(", "consent", "identityHash", "no_subscription", "user_not_found", "cannot be undone"]) {
+    for (const word of ["forgetDevice(", "getPreferences(", "setPreferences(", "consent", "identityToken", "no_subscription", "user_not_found", "cannot be undone"]) {
       expect(section).toContain(word);
     }
     const limitations = readme.slice(readme.search(/^## Limitations$/m), readme.search(/^## Troubleshooting$/m));
@@ -313,7 +313,7 @@ describe("SECURITY.md", () => {
   });
 
   it("says the erasure needs the proof of the identity when the project requires it, and that nothing is signed", () => {
-    expect(security).toContain("identityHash");
+    expect(security).toContain("identityToken");
     expect(security).toMatch(/`required`/);
     expect(security).toMatch(/403/);
     expect(security).toMatch(/does not sign/i);

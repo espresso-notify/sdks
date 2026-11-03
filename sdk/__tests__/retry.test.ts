@@ -150,3 +150,5 @@ describe('withRetry', () => {
     expect(fn).toHaveBeenCalledTimes(1)
   })
 })
+
+// feature: queue.retry

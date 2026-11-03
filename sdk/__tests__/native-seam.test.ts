@@ -251,8 +251,8 @@ describe('the requirePinning guard on the native transport (pinning-visible, SPT
 
     await expect(sdk.enableCertificatePinning(PINS)).resolves.toBe(true);
     expect(native.setPins).toHaveBeenCalledTimes(1);
-    await client.devices.identify({ externalId: 'u1' });
-    expect(received(native).map((c) => c.path)).toEqual(['/v1/devices/identify']);
+    await client.devices.unregister();
+    expect(received(native).map((c) => c.path)).toEqual(['/v1/devices/unregister']);
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
@@ -260,7 +260,7 @@ describe('the requirePinning guard on the native transport (pinning-visible, SPT
     const { sdk, native, make } = boot();
     const client = make({ requirePinning: true });
     await sdk.enableCertificatePinning(PINS);
-    await client.devices.identify({ externalId: 'u1' });
+    await client.devices.unregister();
     expect(native.request).toHaveBeenCalledTimes(1);
 
     await sdk.disableCertificatePinning();

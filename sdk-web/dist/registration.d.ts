@@ -21,7 +21,7 @@
  * window, a full disk) only means the call runs every time.
  */
 /** The version of this package; `package.json` says the same (a test keeps the two equal). */
-export declare const SDK_VERSION = "0.0.3";
+export declare const SDK_VERSION = "0.1.0";
 /** The two calls that are remembered. */
 export type RegistrationKind = "register" | "identify";
 /** How long the page must be out of sight, or the tab untouched, for the next sight of it to start a new session (30 minutes). */
@@ -47,10 +47,10 @@ export interface RegistrationParts {
     /** The VAPID key the subscription was made with. */
     vapidKey?: string;
     timezone?: string;
-    /** `identify` only: the external id of the user, the display name and the proof of identity; a change of any is a change. */
+    /** `identify` only: the external id of the user, the display name and the identity token; a change of any is a change. */
     userId?: string | null;
     userName?: string | null;
-    identityHash?: string | null;
+    identityToken?: string | null;
 }
 /** The permission to run a call, given by {@link RegistrationTracker.plan} and handed back to `commit` when the call worked. */
 export interface RegistrationTicket {

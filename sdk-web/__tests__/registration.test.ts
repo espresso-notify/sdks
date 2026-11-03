@@ -20,7 +20,7 @@ const PARTS: RegistrationParts = {
   vapidKey: "BNvapid",
   timezone: "America/Sao_Paulo",
 };
-const WHO: RegistrationParts = { ...PARTS, userId: "user-secret-42", userName: "Maria Silva", identityHash: "ab".repeat(32) };
+const WHO: RegistrationParts = { ...PARTS, userId: "user-secret-42", userName: "Maria Silva", identityToken: "ab".repeat(32) };
 
 let clock = 1_800_000_000_000;
 let local: FakeStorage;
@@ -84,7 +84,7 @@ describe("plan and commit", () => {
   it.each<[string, Partial<RegistrationParts>]>([
     ["the user", { userId: "user-2" }],
     ["the name", { userName: "Other Name" }],
-    ["the proof of identity", { identityHash: "cd".repeat(32) }],
+    ["the identity token", { identityToken: "cd".repeat(32) }],
   ])("asks for identify again at once when %s changed", async (_name, change) => {
     const t = tracker();
     await t.commit((await t.plan("identify", WHO))!);
@@ -272,3 +272,8 @@ describe("what is stored", () => {
     expect(await t.plan("register", PARTS)).not.toBeNull();
   });
 });
+
+// feature: registration.register
+// feature: registration.dedupe
+
+// feature: security.secure-storage

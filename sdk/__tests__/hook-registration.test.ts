@@ -268,3 +268,5 @@ describe('a client without a tracker', () => {
     expect(mockIdentify).toHaveBeenCalledTimes(1)
   })
 })
+
+// feature: registration.register

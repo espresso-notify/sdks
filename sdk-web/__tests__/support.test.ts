@@ -355,3 +355,7 @@ describe("getSubscription and the functions that already existed", () => {
     expect(error.message).toBe("Failed to fetch VAPID key — check that web push is configured in the dashboard");
   });
 });
+
+// feature: platform.capabilities
+// feature: registration.permission-request
+// feature: registration.permission-state

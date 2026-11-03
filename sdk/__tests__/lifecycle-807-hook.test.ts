@@ -317,3 +317,5 @@ describe('usePushNotifications — permission re-check via AppState (#807)', () 
     expect(mockRecordLifecycle).not.toHaveBeenCalled()
   })
 })
+
+// feature: registration.lifecycle-events

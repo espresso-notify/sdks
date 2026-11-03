@@ -203,7 +203,7 @@ describe('what is on disk (OFQ-09, OFQ-12)', () => {
     expect(text).not.toContain('secret-device')
     expect(text).not.toMatch(/old-rotated|new-rotated|user-alpha|user-beta|user-7|external_id/)
     expect(text).not.toMatch(/"kind":"(identity|subscription)"/)
-    expect(text).not.toMatch(/Bearer|pk_live|sk_|identity_hash|identityHash|secret/i)
+    expect(text).not.toMatch(/Bearer|pk_live|sk_|identity_token|identityToken|secret/i)
     // the two events that carry a token or a user id still wait, in memory
     expect(await client.queueStats()).toEqual({ pending: 5, dropped: 0 })
     void sdk
@@ -1043,3 +1043,7 @@ describe('a store that an earlier run left (G-15, G-16)', () => {
 
 // A module, so that its top-level names do not clash with the other test files that are scripts.
 export {}
+
+// feature: platform.destroy
+
+// feature: queue.offline

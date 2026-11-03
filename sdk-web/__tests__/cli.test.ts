@@ -48,3 +48,5 @@ describe("service worker installer", () => {
     expect(servedUrlFor(".", destinationFor("."))).toBe(SW_PATH);
   });
 });
+
+// feature: platform.installer

@@ -52,14 +52,14 @@ describe("forgetDevice", () => {
     expect(JSON.parse(call[1].body)).toEqual({ endpoint: ENDPOINT });
   });
 
-  it("sends identity_hash only when the site passes identityHash", async () => {
+  it("sends identity_token only when the site passes identityToken", async () => {
     const mock = useFetch({ [ERASE]: { status: 204 } });
     const client = new WebPushClient({ projectId: PROJECT });
     await client.subscribe();
 
-    await client.forgetDevice({ identityHash: "abc123" });
+    await client.forgetDevice({ identityToken: "abc123" });
 
-    expect(JSON.parse(eraseCalls(mock)[0][1].body)).toEqual({ endpoint: ENDPOINT, identity_hash: "abc123" });
+    expect(JSON.parse(eraseCalls(mock)[0][1].body)).toEqual({ endpoint: ENDPOINT, identity_token: "abc123" });
   });
 
   it("after the API erased, drops the local record and the browser subscription and resolves with no value", async () => {
@@ -193,3 +193,6 @@ describe("unsubscribe stays what it was", () => {
     expect(eraseCalls(mock)).toHaveLength(0);
   });
 });
+
+// feature: privacy.erase
+// feature: privacy.wipe-local-data

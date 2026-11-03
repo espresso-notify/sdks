@@ -124,7 +124,7 @@ describe('requirePinning (RNV-23)', () => {
     const client = new sdk.PushClient(config({ requirePinning: true }));
 
     await sdk.enableCertificatePinning(PINS);
-    await client.devices.identify({ externalId: 'u1' });
+    await client.devices.unregister();
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
@@ -152,10 +152,13 @@ describe('requirePinning (RNV-23)', () => {
     const sdk = load();
     const client = new sdk.PushClient(config());
 
-    await client.devices.identify({ externalId: 'u1' });
+    await client.devices.unregister();
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 });
 
 export {};
+
+// feature: security.pinning
+// feature: security.require-pinning

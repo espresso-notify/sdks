@@ -402,3 +402,5 @@ describe('AttestationProvider concrete units', () => {
     expect(p.isSupported()).toBe(false);
   });
 });
+
+// feature: security.attestation

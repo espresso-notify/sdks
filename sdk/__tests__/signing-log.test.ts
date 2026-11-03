@@ -42,7 +42,7 @@ describe('logging a failed signature (RNV-25)', () => {
       _signer: signer,
     });
 
-    await client.devices.identify({ externalId: 'u1' });
+    await client.devices.unregister().catch(() => undefined); // it rejects with SIGNING_FAILED since sdk-parity T27
 
     const signingWarnings = warn.mock.calls.filter((c) => String(c[0]).includes('signing failed'));
     expect(signingWarnings).toHaveLength(1);
@@ -57,7 +57,7 @@ describe('logging a failed signature (RNV-25)', () => {
     expect(String(args[0])).not.toContain('[push-sdk]');
   });
 
-  it('still sends the request, unsigned', async () => {
+  it('does not send the request unsigned', async () => {
     const signer: Signer = {
       generate: jest.fn().mockResolvedValue('PUB=='),
       sign: jest.fn().mockRejectedValue(new Error('boom')),
@@ -74,10 +74,10 @@ describe('logging a failed signature (RNV-25)', () => {
       _signer: signer,
     });
 
-    await client.devices.identify({ externalId: 'u1' });
+    await client.devices.unregister().catch(() => undefined);
 
-    expect(mockFetch).toHaveBeenCalledTimes(1);
-    expect(mockFetch.mock.calls[0][1].headers['X-KM-Signature']).toBeUndefined();
+    // sdk-parity T27 (PAR-20): a request that cannot be signed is not sent unsigned any more
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
   it('names a non-Error rejection by the code, not by its text', async () => {
@@ -95,7 +95,7 @@ describe('logging a failed signature (RNV-25)', () => {
       _keyStore: new MemoryKeyStore(),
       _signer: signer,
     });
-    await client.devices.identify({ externalId: 'u1' });
+    await client.devices.unregister().catch(() => undefined); // it rejects with SIGNING_FAILED since sdk-parity T27
     // SPEC_AMENDMENT (D-6): was toContain('plain string failure').
     const text = String(warn.mock.calls.find((c) => String(c[0]).includes('signing failed'))?.[0]);
     expect(text).toContain('SIGNING_FAILED');

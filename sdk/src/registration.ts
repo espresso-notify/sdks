@@ -22,6 +22,7 @@ export type RegistrationKind = 'register' | 'identify'
 export interface RegistrationStore {
   getItem(key: string): Promise<string | null>
   setItem(key: string, value: string): Promise<void>
+  removeItem?(key: string): Promise<void>
 }
 
 /** What a call sends about the device and the user; the fingerprint is made of it. */
@@ -31,9 +32,9 @@ export interface RegistrationParts {
   appVersion?: string
   /** The external id of the user, or null/undefined for an anonymous device. */
   userId?: string | null
-  /** `identify` only: the display name and the proof of identity sent with the user; a change of either is a change. */
+  /** `identify` only: the display name and the identity token sent with the user; a change of either is a change. */
   userName?: string | null
-  identityHash?: string | null
+  identityToken?: string | null
 }
 
 /** The permission to run a call, given by {@link RegistrationTracker.plan} and handed back to `commit` when the call worked. */
@@ -143,10 +144,22 @@ export class RegistrationTracker {
     return this._update((record) => { delete record[kind] })
   }
 
+  /** Forgets everything, in memory and in the store (`wipeLocalData`): every call runs again. Never throws. */
+  reset(): Promise<void> {
+    const run = this._chain.then(async () => {
+      this._record = { v: 1 }
+      this._loading = null
+      if (typeof this._store.removeItem === 'function') await this._store.removeItem(this._key)
+      else await this._store.setItem(this._key, '')
+    })
+    this._chain = run.then(() => undefined, () => undefined)
+    return run.catch(() => undefined)
+  }
+
   private _fingerprint(parts: RegistrationParts): string {
     const appVersion = parts.appVersion ?? this._options.getAppVersion?.() ?? ''
     // JSON keeps the fields apart (a user id that ends like a token cannot be confused with it).
-    return hashText(JSON.stringify([parts.token, appVersion, parts.userId ?? '', parts.userName ?? '', parts.identityHash ?? '']))
+    return hashText(JSON.stringify([parts.token, appVersion, parts.userId ?? '', parts.userName ?? '', parts.identityToken ?? '']))
   }
 
   private _read(): Promise<Stored> {

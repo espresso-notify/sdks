@@ -229,3 +229,5 @@ describe('usePushNotifications with injected PushProvider', () => {
     expect(mockRegister).toHaveBeenCalledTimes(1)
   })
 })
+
+// feature: registration.token-provider

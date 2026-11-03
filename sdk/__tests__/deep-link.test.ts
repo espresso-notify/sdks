@@ -262,3 +262,5 @@ describe('a tap without a usable url opens nothing (DLK-07)', () => {
 
 // A module, so that its top-level names do not clash with the other test files that are scripts.
 export {}
+
+// feature: tracking.deep-links

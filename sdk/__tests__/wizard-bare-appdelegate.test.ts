@@ -14,7 +14,7 @@ import { addedLines, FIXTURE_ROOT, fixture, onlyAddsLines, TEMPLATE_VERSIONS } f
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { appDelegate } = require('../bin/lib/patchers/appDelegate.js');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { applyPatch } = require('../bin/lib/patch.js');
+const { applyPatch, createBackupSession } = require('../bin/lib/patch.js');
 
 const SWIFT = { file: '/app/ios/HelloWorld/AppDelegate.swift' };
 const OBJC = { file: '/app/ios/HelloWorld/AppDelegate.mm' };
@@ -234,11 +234,12 @@ describe('appDelegate through applyPatch on a copy of the template', () => {
     cpSync(join(FIXTURE_ROOT, version, rel), join(dir, rel));
     const file = join(dir, rel);
     const now = new Date(2026, 9, 23, 10, 0, 0);
-    const first = applyPatch({ file, patcher: appDelegate, context: { file }, now });
+    const backup = createBackupSession({ root: dir, now });
+    const first = applyPatch({ file, patcher: appDelegate, context: { file }, backup });
     expect(first.status).toBe('patched');
     expect(onlyAddsLines(fixture(version, rel), readFileSync(file, 'utf8'))).toBe(true);
     const after = readFileSync(file, 'utf8');
-    expect(applyPatch({ file, patcher: appDelegate, context: { file }, now }).status).toBe('already');
+    expect(applyPatch({ file, patcher: appDelegate, context: { file }, backup }).status).toBe('already');
     expect(readFileSync(file, 'utf8')).toBe(after);
   });
 });

@@ -33,16 +33,16 @@ describe('forgetDevice (RNV-09, RNV-10)', () => {
     expect(url).toMatch(/\/v1\/devices$/);
     expect(method).toBe('DELETE');
     expect(JSON.parse(raw)).toEqual({ push_token: 'tok-1' });
-    expect(raw).not.toContain('identity_hash');
+    expect(raw).not.toContain('identity_token');
     expect(raw).not.toContain('device_id');
   });
 
-  it('adds device_id and identity_hash when the options carry them (RNV-13)', async () => {
+  it('adds device_id and identity_token when the options carry them (JWT-23)', async () => {
     mockFetch.mockImplementation(noContent);
 
-    await client().devices.forgetDevice({ deviceId: 'dev-9', identityHash: 'abc123' });
+    await client().devices.forgetDevice({ deviceId: 'dev-9', identityToken: 'abc123' });
 
-    expect(call().body).toEqual({ push_token: 'tok-1', device_id: 'dev-9', identity_hash: 'abc123' });
+    expect(call().body).toEqual({ push_token: 'tok-1', device_id: 'dev-9', identity_token: 'abc123' });
   });
 
   it('erases by device id alone when the client has no token', async () => {
@@ -57,10 +57,10 @@ describe('forgetDevice (RNV-09, RNV-10)', () => {
     expect(call().body).toEqual({ push_token: 'other' });
   });
 
-  it('leaves out an empty identity hash (RNV-14)', async () => {
+  it('leaves out an empty identity token (JWT-23)', async () => {
     mockFetch.mockImplementation(noContent);
-    await client().devices.forgetDevice({ identityHash: '' });
-    expect(call().raw).not.toContain('identity_hash');
+    await client().devices.forgetDevice({ identityToken: '' });
+    expect(call().raw).not.toContain('identity_token');
   });
 
   it('throws before any request without a token and without a device id (AC 2)', async () => {
@@ -117,3 +117,5 @@ describe('forgetDevice and the remembered external id (RNV-09)', () => {
 });
 
 export {};
+
+// feature: privacy.erase

@@ -4,7 +4,20 @@ All notable changes to `@espresso-notify/web` are listed here. The format follow
 
 ## Unreleased
 
-Nothing yet.
+## 0.1.0 - 2026-11-03
+
+### Changed
+
+- **Breaking:** the proof of identity is a JWT signed by your server, not an HMAC. `identify` and `forgetDevice` take `identityToken` in place of `identityHash`, and `getPreferences` and `setPreferences` take an optional `{ identityToken, externalId }`. The API answers 400 `identity_hash_unsupported` to a call that still sends the old field. What to do: sign an ES256 JWT with the key you generate in the dashboard (`sub` is the external id, `aud` is the public id of the project), pass it as `identityToken`, and set `identityTokenProvider` on the client to renew an expired token. `c6dff6f51`
+
+### Added
+
+- `WebPushClientOptions.identityTokenProvider`: when the API answers 401 `identity_token_expired`, the client asks your page for a new token once with the `externalId`, keeps it in memory and repeats the call once. Calls of one user that expire together share one provider call; any other error, no provider, a provider that fails or a second failure reaches your code with no further try. `c6dff6f51`
+- The client keeps the identity token of each user in memory only, sends it on the later calls of that user, and forgets it on `unsubscribe()` and on a successful `forgetDevice()`. `c6dff6f51`
+
+### Fixed
+
+- When the registration rule skips `identify` because the same user and token were already sent in this session, the client now keeps the user and the token, so a later `getPreferences`, `setPreferences` or `forgetDevice` without options carries the token and renews it when it expires. `b40be7c45`
 
 ## 0.0.3 - 2026-10-23
 

@@ -92,3 +92,6 @@ describe('device language and time zone (ES-03)', () => {
     expect(metadata.timezone).toBeUndefined();
   });
 });
+
+// feature: metadata.auto-fields
+// feature: metadata.timezone

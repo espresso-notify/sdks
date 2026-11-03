@@ -10,7 +10,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 var _a, _b, _c, _d, _e, _f, _g, _h;
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getForeignInitialNotification = exports.handleImagePushInitialNotification = exports.handleImagePushBackgroundEvent = exports.createNotificationHandler = exports.Devices = exports.PushClient = exports.BareDisplayAdapter = exports.FirebaseAppCheckProvider = exports.ExpoAppAttestProvider = exports.NullAttestationProvider = exports.AsyncStorageKeyStore = exports.ExpoSecureKeyStore = exports.MemoryKeyStore = exports.BareProvider = exports.ExpoPushProvider = exports.EspressoNotifyHttpError = exports.EspressoNotifyError = void 0;
+exports.getForeignInitialNotification = exports.handleImagePushInitialNotification = exports.handleImagePushBackgroundEvent = exports.createNotificationHandler = exports.Devices = exports.PushClient = exports.CONSENT_BUFFER_EVENTS = exports.BareDisplayAdapter = exports.FirebaseAppCheckProvider = exports.ExpoAppAttestProvider = exports.NullAttestationProvider = exports.RN_KEPT_STORAGE_KEYS = exports.RN_STORAGE_KEYS = exports.AsyncStorageKeyStore = exports.ExpoSecureKeyStore = exports.MemoryKeyStore = exports.BareProvider = exports.ExpoPushProvider = exports.EspressoNotifySigningError = exports.EspressoNotifyHttpError = exports.EspressoNotifyError = void 0;
 exports.resolvePushProvider = resolvePushProvider;
 exports.sha256Hex = sha256Hex;
 exports.sha256HexUtf8 = sha256HexUtf8;
@@ -28,6 +28,7 @@ const transport_1 = require("./transport");
 var errors_2 = require("./errors");
 Object.defineProperty(exports, "EspressoNotifyError", { enumerable: true, get: function () { return errors_2.EspressoNotifyError; } });
 Object.defineProperty(exports, "EspressoNotifyHttpError", { enumerable: true, get: function () { return errors_2.EspressoNotifyHttpError; } });
+Object.defineProperty(exports, "EspressoNotifySigningError", { enumerable: true, get: function () { return errors_2.EspressoNotifySigningError; } });
 // ─── Concrete PushProvider ────────────────────────────────────────────────────
 /**
  * ExpoPushProvider — PushProvider backed by expo-notifications.
@@ -673,6 +674,12 @@ class MemoryKeyStore {
             this._store.set(key, value);
         });
     }
+    /** @internal */
+    removeItem(key) {
+        return __awaiter(this, void 0, void 0, function* () {
+            this._store.delete(key);
+        });
+    }
 }
 exports.MemoryKeyStore = MemoryKeyStore;
 /** ExpoSecureKeyStore — wraps expo-secure-store (optional peer dep). */
@@ -692,6 +699,15 @@ class ExpoSecureKeyStore {
     setItem(key, value) {
         return __awaiter(this, void 0, void 0, function* () {
             yield this._secureStore.setItemAsync(key, value);
+        });
+    }
+    /** @internal */
+    removeItem(key) {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (typeof this._secureStore.deleteItemAsync === 'function')
+                yield this._secureStore.deleteItemAsync(key);
+            else
+                yield this._secureStore.setItemAsync(key, '');
         });
     }
 }
@@ -718,6 +734,15 @@ class AsyncStorageKeyStore {
     setItem(key, value) {
         return __awaiter(this, void 0, void 0, function* () {
             yield this._storage.setItem(key, value);
+        });
+    }
+    /** @internal */
+    removeItem(key) {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (typeof this._storage.removeItem === 'function')
+                yield this._storage.removeItem(key);
+            else
+                yield this._storage.setItem(key, '');
         });
     }
 }
@@ -790,8 +815,7 @@ function resolveSecureSign() {
         const mod = (_a = OptSecureSign === null || OptSecureSign === void 0 ? void 0 : OptSecureSign.default) !== null && _a !== void 0 ? _a : OptSecureSign;
         if (!mod)
             return null;
-        return {
-            generate(keyId) {
+        return Object.assign({ generate(keyId) {
                 return __awaiter(this, void 0, void 0, function* () {
                     // react-native-secure-sign 0.0.2 exports `generate(keyId, options?)`, which resolves to the public key.
                     // Its default, when options are left out, is a key that asks for the user's biometrics on every use (Android);
@@ -823,8 +847,11 @@ function resolveSecureSign() {
                         return false;
                     }
                 });
-            },
-        };
+            } }, (typeof mod.deleteKey === 'function'
+            ? { deleteKey(keyId) {
+                    return __awaiter(this, void 0, void 0, function* () { yield mod.deleteKey(keyId); });
+                } }
+            : {}));
     }
     catch (_b) {
         return null;
@@ -884,8 +911,37 @@ function _toBase64(input) {
 }
 // ─── Signing session (#813) ───────────────────────────────────────────────────
 const SIGNING_KEY_ID = 'espresso-signing-key';
-const SIGNING_DEVICE_ID_KEY = 'espresso.deviceId';
-const SIGNING_PUBKEY_KEY = 'espresso.signingPublicKey';
+/**
+ * Every key the SDK writes to the storage of the app. `wipeLocalData` deletes each of them (the test enumerates this
+ * constant, so a key added here without a deletion fails it). A value that ends in `.` is a prefix: the real key
+ * follows it (the offline queue adds the project id, the device id and the chunk number).
+ * @internal
+ */
+exports.RN_STORAGE_KEYS = {
+    deviceId: 'espresso.deviceId',
+    signingPublicKey: 'espresso.signingPublicKey',
+    eventQueue: 'espresso.eventQueue.',
+    registration: 'espresso.registration.',
+    consent: 'espresso.consent',
+};
+/**
+ * The key that `wipeLocalData` keeps on purpose: the choice of `disableSDK` holds until `enableSDK`, an erase included
+ * (the iOS and Android SDKs do the same). @internal
+ */
+exports.RN_KEPT_STORAGE_KEYS = {
+    disabled: 'espresso.disabled',
+};
+const SIGNING_DEVICE_ID_KEY = exports.RN_STORAGE_KEYS.deviceId;
+const SIGNING_PUBKEY_KEY = exports.RN_STORAGE_KEYS.signingPublicKey;
+/** Deletes a key of a store; a store without `removeItem` gets an empty text, which no reader takes for a value. @internal */
+function _forgetKey(store, key) {
+    return __awaiter(this, void 0, void 0, function* () {
+        if (typeof store.removeItem === 'function')
+            yield store.removeItem(key);
+        else
+            yield store.setItem(key, '');
+    });
+}
 /**
  * SigningSession — lazy-initialized per-install identity.
  * Generates + persists deviceId and ECDSA-P256 key pair on first use.
@@ -923,6 +979,12 @@ class SigningSession {
     }
     get deviceId() { return this._deviceId; }
     get publicKey() { return this._publicKey; }
+    /** Forgets the id and the key held in memory, so the next use makes new ones (after `wipeLocalData`). */
+    reset() {
+        this._deviceId = null;
+        this._publicKey = null;
+        this._initialized = false;
+    }
 }
 /**
  * NullAttestationProvider — no-op provider. `isSupported()` is always false, so
@@ -1190,6 +1252,10 @@ try {
 }
 catch ( /* not available */_v) { /* not available */ }
 // ─── Concrete adapter implementations ─────────────────────────────────────────
+/** Whether a failed call is the server saying the identity token ran out (401 `identity_token_expired`). @internal */
+function _isExpiredIdentityToken(error) {
+    return error instanceof errors_1.EspressoNotifyHttpError && error.status === 401 && error.code === 'identity_token_expired';
+}
 /**
  * The error a Devices method that throws hands to the app: the message names the
  * operation, and an HTTP failure keeps its `status` and `code`.
@@ -1203,6 +1269,8 @@ function _operationError(operation, error) {
         return new errors_1.EspressoNotifyHttpError(`[espresso-notify] ${operation} failed: ${inner}`, error.status, error.code, path, error.retryAfter);
     }
     const message = `[espresso-notify] ${operation} failed: ${error instanceof Error ? error.message : String(error)}`;
+    if (error instanceof errors_1.EspressoNotifySigningError)
+        return new errors_1.EspressoNotifySigningError(message);
     if (error instanceof errors_1.EspressoNotifyError) {
         return new errors_1.EspressoNotifyError(error.code, message);
     }
@@ -1221,7 +1289,7 @@ class FetchTransport {
         return __awaiter(this, arguments, void 0, function* (path, options = {}) {
             var _a, _b;
             const url = `${this.baseURL}${path}`;
-            const headers = Object.assign({ Authorization: `Bearer ${this.projectId}`, "Content-Type": "application/json" }, options.headers);
+            const headers = Object.assign({ Authorization: `Bearer ${this.projectId}`, "Content-Type": "application/json", [transport_1.SDK_HEADER]: transport_1.SDK_HEADER_VALUE }, options.headers);
             const response = yield fetch(url, Object.assign(Object.assign({}, options), { headers }));
             if (!response.ok) {
                 // The body and the header are read as text; whatever is unusable counts as absent (buildHttpError never throws).
@@ -1321,9 +1389,10 @@ class PinningGuardTransport {
  * `signature_required`. Signing the register POST as well is harmless because
  * the server exempts that path from verification.
  *
- * Signing is best-effort: if the signer or session is unavailable, the request
- * proceeds without signing headers (a warning is logged; the call never throws
- * from the signing path so app boot is never blocked).
+ * Signing fails closed: if the signer or its key is unavailable, the request is not sent
+ * and the call throws `EspressoNotifySigningError` (`SIGNING_FAILED`); an event in the offline
+ * queue stays queued. Only the routes the server exempts from signing, the register and the
+ * attestation calls, go out unsigned when signing is unavailable, so a device can still enroll.
  * @internal
  */
 class SigningTransport {
@@ -1336,6 +1405,7 @@ class SigningTransport {
         return __awaiter(this, arguments, void 0, function* (path, options = {}) {
             var _a, _b;
             const method = ((_a = options.method) !== null && _a !== void 0 ? _a : 'GET').toUpperCase();
+            const exempt = _isSigningExempt(path);
             // Sign EVERY method (GET included) — see class doc-comment for rationale.
             try {
                 yield this._session.ensureInitialized();
@@ -1371,18 +1441,36 @@ class SigningTransport {
                 }
             }
             catch (_c) {
-                // Signing failed — warn and fall through to send unsigned. App boot must
-                // never be blocked by the signing path; the server will reject the request
-                // if require_signing is enabled.
-                // eslint-disable-next-line no-console
                 // A fixed message with a code: the text of the signer's error is never logged (it can carry internals of the
-                // native module), so `err` is not read.
-                console.warn('[espresso-notify] request signing failed (SIGNING_FAILED); sending unsigned ' +
-                    '(server will reject if require_signing is enabled).');
+                // native module), so the error is not read.
+                return this._unavailable(exempt, path, options);
             }
-            return this._inner.request(path, options);
+            // No device id or no key: the signer could not make one, so this request cannot be signed either.
+            return this._unavailable(exempt, path, options);
         });
     }
+    /** The request cannot be signed: an exempt route goes unsigned, any other is not sent. */
+    _unavailable(exempt, path, options) {
+        if (exempt)
+            return this._inner.request(path, options);
+        // eslint-disable-next-line no-console
+        console.warn('[espresso-notify] request signing failed (SIGNING_FAILED); the request was not sent.');
+        return Promise.reject(new errors_1.EspressoNotifySigningError('[espresso-notify] request signing failed (SIGNING_FAILED); the request was not sent.'));
+    }
+}
+/** The routes the server does not verify a signature on: the register of a device and the attestation calls. @internal */
+function _isSigningExempt(path) {
+    let pathname = path;
+    if (!path.startsWith('/')) {
+        try {
+            pathname = new URL(path).pathname;
+        }
+        catch (_a) {
+            return false;
+        }
+    }
+    const bare = pathname.split('?')[0];
+    return bare === '/v1/devices/register' || bare.startsWith('/v1/attest/');
 }
 /**
  * The language tag and the IANA time zone of the device. Current `expo-localization` has
@@ -1975,7 +2063,7 @@ const QUEUE_TOKEN_RACE_ATTEMPTS = 4;
 /** The only routes the queue replays; a stored item for any other path is ignored. @internal */
 const QUEUE_PATHS = new Set(['/v1/notifications/track', '/v1/devices/lifecycle']);
 /** The only fields of a delivery event or a custom event that the store may hold. @internal */
-const QUEUE_STORED_TRACK_FIELDS = new Set(['notification_id', 'event', 'push_token', 'event_id']);
+const QUEUE_STORED_TRACK_FIELDS = new Set(['notification_id', 'event', 'push_token', 'event_id', 'action_id']);
 /** The only fields of a permission change that the store may hold: a state before and after, no user, no token. @internal */
 const QUEUE_STORED_LIFECYCLE_FIELDS = new Set(['push_token', 'kind', 'from', 'to', 'event_id']);
 /**
@@ -2031,6 +2119,9 @@ function _classifySendError(error) {
         }
         return { kind: 'refused', status, code: error.code };
     }
+    // The request could not be signed: nothing was sent and it may work later, so the event stays queued.
+    if (error instanceof errors_1.EspressoNotifySigningError)
+        return { kind: 'retry', network: false };
     if (error instanceof errors_1.EspressoNotifyError)
         return { kind: 'sdk' };
     return { kind: 'retry', network: true };
@@ -2098,6 +2189,18 @@ class ChunkedTextStore {
             this._written = chunks;
         });
     }
+    /** Deletes the stored text: the count and every chunk that was written or can be read. */
+    clear() {
+        return __awaiter(this, void 0, void 0, function* () {
+            const count = Number(yield this._store.getItem(`${this._key}.n`));
+            const stored = Number.isInteger(count) && count > 0 && count <= 5000 ? count : 0;
+            const total = Math.max(stored, this._written.length);
+            for (let i = 0; i < total; i++)
+                yield _forgetKey(this._store, `${this._key}.${i}`);
+            yield _forgetKey(this._store, `${this._key}.n`);
+            this._written = [];
+        });
+    }
 }
 /**
  * The store of the queue: the one the SDK already resolves for the signing key. SecureStore first, then AsyncStorage,
@@ -2116,6 +2219,164 @@ function resolveQueueStore() {
     return { store: new MemoryKeyStore(), persistent: false };
 }
 /**
+ * How many events the SDK holds while the app has not given consent (`requireConsent`), the oldest dropped first. The
+ * number is `consent.buffer_events` of `sdk-parity/constants.json`, the same as the iOS and Android SDKs.
+ * @internal
+ */
+exports.CONSENT_BUFFER_EVENTS = 100;
+/**
+ * Whether the client may use the network. Two things close it: `disableSDK` (until `enableSDK`) and, with `requireConsent`,
+ * the lack of consent (until `setConsent(true)`). Both answers are kept in the store and read after the client was made;
+ * `ready` settles when they were. Until then a gate that needs consent is closed, and a request waits for `ready`.
+ * @internal
+ */
+class NetworkGate {
+    constructor(_required, _store) {
+        this._required = _required;
+        this._store = _store;
+        this._consent = false;
+        this._disabled = false;
+        this._consentTouched = false;
+        this._disabledTouched = false;
+        this._loaded = false;
+        this._openListeners = [];
+        this._disabledListeners = [];
+        this.ready = this._restore();
+    }
+    /** Reads the answers of an earlier run. A store that fails to answer leaves the gate as it is. */
+    _restore() {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const [consent, disabled] = yield Promise.all([
+                    this._required ? this._store.getItem(exports.RN_STORAGE_KEYS.consent) : Promise.resolve(null),
+                    this._store.getItem(exports.RN_KEPT_STORAGE_KEYS.disabled),
+                ]);
+                const wasOpen = this.isOpen();
+                if (!this._consentTouched && consent === 'true')
+                    this._consent = true;
+                if (!this._disabledTouched && disabled === 'true')
+                    this._disabled = true;
+                if (this._disabled)
+                    this._notify(this._disabledListeners);
+                else if (!wasOpen && this.isOpen())
+                    this._notify(this._openListeners);
+            }
+            catch ( /* as it was: the app can say it again */_a) { /* as it was: the app can say it again */ }
+            this._loaded = true;
+        });
+    }
+    /** True once the answers of an earlier run were read (or could not be). */
+    get loaded() { return this._loaded; }
+    get required() { return this._required; }
+    get disabled() { return this._disabled; }
+    isOpen() {
+        return !this._disabled && (!this._required || this._consent);
+    }
+    /** Calls `listener` every time the gate goes from closed to open. */
+    onOpen(listener) {
+        this._openListeners.push(listener);
+    }
+    /** Calls `listener` when the SDK is turned off: with `disableSDK`, and when the stored answer says it was. */
+    onDisabled(listener) {
+        this._disabledListeners.push(listener);
+    }
+    _notify(listeners) {
+        for (const listener of listeners) {
+            try {
+                listener();
+            }
+            catch ( /* a listener never breaks the gate */_a) { /* a listener never breaks the gate */ }
+        }
+    }
+    /** Records the answer of the user. Without `requireConsent` there is no gate, and nothing changes. Never throws. */
+    setConsent(granted) {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (!this._required)
+                return;
+            const wasOpen = this.isOpen();
+            this._consentTouched = true;
+            this._consent = granted;
+            try {
+                if (granted)
+                    yield this._store.setItem(exports.RN_STORAGE_KEYS.consent, 'true');
+                else
+                    yield _forgetKey(this._store, exports.RN_STORAGE_KEYS.consent);
+            }
+            catch ( /* kept for this run; the app can grant it again */_a) { /* kept for this run; the app can grant it again */ }
+            if (!wasOpen && this.isOpen())
+                this._notify(this._openListeners);
+        });
+    }
+    /** Turns the SDK off, and keeps that across restarts. Never throws. */
+    disable() {
+        return __awaiter(this, void 0, void 0, function* () {
+            this._disabledTouched = true;
+            const was = this._disabled;
+            this._disabled = true;
+            if (!was)
+                this._notify(this._disabledListeners);
+            try {
+                yield this._store.setItem(exports.RN_KEPT_STORAGE_KEYS.disabled, 'true');
+            }
+            catch ( /* off for this run */_a) { /* off for this run */ }
+        });
+    }
+    /** Turns the SDK on again. Never throws. */
+    enable() {
+        return __awaiter(this, void 0, void 0, function* () {
+            this._disabledTouched = true;
+            const wasOpen = this.isOpen();
+            this._disabled = false;
+            try {
+                yield _forgetKey(this._store, exports.RN_KEPT_STORAGE_KEYS.disabled);
+            }
+            catch ( /* on for this run */_a) { /* on for this run */ }
+            if (!wasOpen && this.isOpen())
+                this._notify(this._openListeners);
+        });
+    }
+    /** Back to no consent, after `wipeLocalData`. The choice of `disableSDK` stays. */
+    reset() {
+        this._consent = false;
+    }
+}
+/** Refuses every request while the gate is closed; the request never reaches the signer or the network. @internal */
+class GateTransport {
+    constructor(_inner, _gate) {
+        this._inner = _inner;
+        this._gate = _gate;
+    }
+    /** A call of the app (`register`, `identify`, ...): it waits for the stored answers when they are not read yet. */
+    request(path, options) {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (!this._gate.loaded)
+                yield this._gate.ready; // the answers of an earlier run decide
+            return this._pass(path, options);
+        });
+    }
+    /**
+     * A report of the queue or the batcher: it leaves in the tick of the call, as it did before the gate existed, unless
+     * consent is required and not read yet. An event reported in the first moments after the client was created, before
+     * the stored `disableSDK` answer is read, can therefore go out; when the answer says off, what waits is deleted.
+     */
+    requestFast(path, options) {
+        if (!this._gate.loaded && this._gate.required)
+            return this.request(path, options);
+        return this._pass(path, options);
+    }
+    _pass(path, options) {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (this._gate.disabled) {
+                throw new errors_1.EspressoNotifyError('SDK_DISABLED', '[espresso-notify] the SDK is turned off (disableSDK): no request is sent until the app calls enableSDK().');
+            }
+            if (!this._gate.isOpen()) {
+                throw new errors_1.EspressoNotifyError('CONSENT_REQUIRED', '[espresso-notify] consent is required (requireConsent): no request is sent until the app calls setConsent(true).');
+            }
+            return this._inner.request(path, options);
+        });
+    }
+}
+/**
  * The offline queue: sends an event now, keeps it when the send fails for a reason that can pass, and sends it again
  * later. Used by `Devices` for the events it reports (opens, clicks, conversions, custom and lifecycle events).
  * @internal
@@ -2123,10 +2384,13 @@ function resolveQueueStore() {
 class EventQueue {
     constructor(_request, _getToken, store, persistent, 
     /** `espresso.eventQueue.<projectId>`: the prefix of the key of the queue; the device id of the install follows it. */
-    _storageKey, maxItems) {
+    _storageKey, maxItems, 
+    /** `requireConsent`: while it is closed nothing is sent and the events wait here, at most `CONSENT_BUFFER_EVENTS`. */
+    _gate = null) {
         this._request = _request;
         this._getToken = _getToken;
         this._storageKey = _storageKey;
+        this._gate = _gate;
         /** The queue of this project and device id; null while the id cannot be read (`_attachStore`): memory only until then. */
         this._store = null;
         this._attaching = null;
@@ -2148,6 +2412,11 @@ class EventQueue {
     /** Sends the event now; keeps it for later when it fails in a way that can pass. Never throws. */
     send(path, body, withEventId) {
         return __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            if ((_a = this._gate) === null || _a === void 0 ? void 0 : _a.disabled)
+                return; // turned off: the event is not kept
+            if (this._gate && !this._gate.isOpen())
+                return this._hold(path, body, withEventId);
             // The request goes out at once (the store is read only when something has to be kept or sent again), so an
             // event leaves the app exactly when it did before the queue existed.
             const full = withEventId ? Object.assign(Object.assign({}, body), { event_id: _newEventId() }) : body;
@@ -2179,6 +2448,51 @@ class EventQueue {
                 return;
             }
             yield this._keepRetry(path, full, outcome, paused);
+        });
+    }
+    /**
+     * Keeps an event until the app gives consent: in memory only, never written, and at most `CONSENT_BUFFER_EVENTS` of
+     * them (the oldest go first). No request is made. Never throws.
+     */
+    _hold(path, body, withEventId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const full = withEventId ? Object.assign(Object.assign({}, body), { event_id: _newEventId() }) : Object.assign({}, body);
+                if ('push_token' in full)
+                    full.push_token = null; // the token is added when the event is sent
+                yield this._serial(() => __awaiter(this, void 0, void 0, function* () {
+                    yield this._load();
+                    const now = Date.now();
+                    this._items.push({ id: _newEventId(), path, body: full, at: now, attempts: 0, next: now, memoryOnly: true, held: true });
+                    const held = this._items.filter((i) => i.held);
+                    const over = held.length - exports.CONSENT_BUFFER_EVENTS;
+                    if (over > 0) {
+                        const gone = new Set(held.slice(0, over));
+                        this._items = this._items.filter((i) => !gone.has(i));
+                        this._dropped += over;
+                    }
+                }));
+            }
+            catch ( /* the event is best-effort */_a) { /* the event is best-effort */ }
+        });
+    }
+    /** The app gave consent: what waited for it is sent now. Never throws. */
+    release() {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                yield this._serial(() => __awaiter(this, void 0, void 0, function* () {
+                    yield this._load();
+                    for (const item of this._items) {
+                        if (!item.held)
+                            continue;
+                        delete item.held;
+                        if (_mayPersist(item.path, item.body))
+                            delete item.memoryOnly; // what may be kept is kept from here on
+                    }
+                }));
+                yield this._flush('force');
+            }
+            catch ( /* a release never rejects */_a) { /* a release never rejects */ }
         });
     }
     /** Keeps an event whose send failed in a way that can pass; `paused`: a Retry-After holds the queue, so no request was made. */
@@ -2269,6 +2583,45 @@ class EventQueue {
             clearTimeout(this._timer);
             this._timer = null;
         }
+    }
+    /**
+     * Drops every event that waits, in memory and in the store, and every wait the server asked for. The next use opens
+     * the queue again under whatever device id the install has by then. Never throws.
+     */
+    wipe() {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                yield this._serial(() => __awaiter(this, void 0, void 0, function* () {
+                    if (this._timer) {
+                        clearTimeout(this._timer);
+                        this._timer = null;
+                    }
+                    // The stored text first: its key follows the device id, which the wipe deletes next.
+                    let store = this._store;
+                    if (!store) {
+                        try {
+                            store = yield this._openStore();
+                        }
+                        catch (_a) {
+                            store = null;
+                        }
+                    }
+                    try {
+                        yield (store === null || store === void 0 ? void 0 : store.clear());
+                    }
+                    catch ( /* the memory is emptied anyway */_b) { /* the memory is emptied anyway */ }
+                    this._items = [];
+                    this._dropped = 0;
+                    this._retryAfterUntil = 0;
+                    this._holdUntil = 0;
+                    this._store = null;
+                    this._attaching = null;
+                    this._loading = null;
+                    this._loadedOnce = false;
+                }));
+            }
+            catch ( /* a wipe never rejects */_a) { /* a wipe never rejects */ }
+        });
     }
     _flush(mode) {
         return this._serial(() => __awaiter(this, void 0, void 0, function* () {
@@ -2411,6 +2764,8 @@ class EventQueue {
         return __awaiter(this, void 0, void 0, function* () {
             if (this._destroyed)
                 return;
+            if (this._gate && !this._gate.isOpen())
+                return; // no consent: nothing leaves, and no timer spins
             let changed = this._expire();
             const start = Date.now();
             const blocked = (mode !== 'force' && start < this._retryAfterUntil) || (mode === 'due' && start < this._holdUntil);
@@ -2489,6 +2844,8 @@ class EventQueue {
         // No token, nothing to send with: the timer stays off (a spin at 0 ms otherwise); `tokenSet()` starts it again.
         if (this._destroyed || this._items.length === 0 || !this._getToken())
             return;
+        if (this._gate && !this._gate.isOpen())
+            return; // `release` starts it again
         const soonest = Math.min(...this._items.map((i) => i.next));
         const at = Math.max(soonest, this._holdUntil, this._retryAfterUntil);
         const timer = setTimeout(() => { this._timer = null; void this._flush('due'); }, Math.max(0, at - Date.now()));
@@ -2556,6 +2913,10 @@ function _isDefaultAction(actionId) {
         return true;
     return actionId === 'default' || (!!(Notifications === null || Notifications === void 0 ? void 0 : Notifications.DEFAULT_ACTION_IDENTIFIER) && actionId === Notifications.DEFAULT_ACTION_IDENTIFIER);
 }
+/** Whether the server takes this as the `action_id` of a click: 1 to 64 characters, no control or format character. @internal */
+function _validActionId(actionId) {
+    return typeof actionId === 'string' && actionId.length > 0 && [...actionId].length <= 64 && !/[\p{Cc}\p{Cf}]/u.test(actionId);
+}
 /** What iOS reports when the user dismisses a push of a category registered with `customDismissAction`. @internal */
 const APPLE_DISMISS_ACTION_IDENTIFIER = 'com.apple.UNNotificationDismissActionIdentifier';
 /**
@@ -2579,6 +2940,10 @@ class PushClient {
         /** The last pushes whose dismissal was recorded, so that two listeners of one response record it once. */
         this._dismissedSeen = [];
         this._responseListening = false;
+        /** The stores that hold the keys of `RN_STORAGE_KEYS` (the one of request signing, the one of the queue), each once. */
+        this._wipeStores = [];
+        this._signingSession = null;
+        this._signer = null;
         this.warnMissingOptionalDeps();
         this.validateProjectId(config.projectId);
         const mode = config.privateTransport === undefined ? 'auto' : config.privateTransport;
@@ -2626,6 +2991,9 @@ class PushClient {
             const signer = (_e = config._signer) !== null && _e !== void 0 ? _e : resolveSecureSign();
             if (signer) {
                 signingSession = new SigningSession(keyStore, signer);
+                this._signingSession = signingSession;
+                this._signer = signer;
+                this._wipeStores.push(keyStore);
                 this._transport = new SigningTransport(baseFetch, signingSession, signer);
             }
             else {
@@ -2636,6 +3004,13 @@ class PushClient {
         else {
             this._transport = baseFetch;
         }
+        // ── Consent gate (requireConsent) ───────────────────────────────────────
+        // The store is resolved once: the gate, the queue and the register read the one `espresso.deviceId` through it.
+        // The gate sits outside the signing, so a request that is refused is never signed and never reaches the network.
+        const queueStore = config._queueStore ? { store: config._queueStore, persistent: true } : resolveQueueStore();
+        this._gate = new NetworkGate(config.requireConsent === true, queueStore.store);
+        this._gateTransport = new GateTransport(this._transport, this._gate);
+        this._transport = this._gateTransport;
         // ── Attestation (#814) ──────────────────────────────────────────────────
         // Total no-op unless explicitly enabled. Attestation needs the persisted
         // per-install device_id from the signing session, so resolve a provider only
@@ -2655,15 +3030,23 @@ class PushClient {
             const maxItems = typeof requested === 'number' && Number.isFinite(requested) && requested >= 1
                 ? Math.min(Math.floor(requested), QUEUE_MAX_ITEMS_LIMIT)
                 : QUEUE_DEFAULT_MAX_ITEMS;
-            const resolved = config._queueStore ? { store: config._queueStore, persistent: true } : resolveQueueStore();
-            this._queue = new EventQueue(this._transport.request.bind(this._transport), () => this._pushToken, resolved.store, resolved.persistent, `espresso.eventQueue.${this.projectId.replace(/[^A-Za-z0-9._-]/g, '_')}`, maxItems);
+            const resolved = queueStore;
+            this._queue = new EventQueue(this._gateTransport.requestFast.bind(this._gateTransport), () => this._pushToken, resolved.store, resolved.persistent, `${exports.RN_STORAGE_KEYS.eventQueue}${this.projectId.replace(/[^A-Za-z0-9._-]/g, '_')}`, maxItems, this._gate);
             this._queue.start();
+            // Consent of an earlier run, read from the store after the client was made: what waited is sent now.
+            this._gate.onOpen(() => { var _a; void ((_a = this._queue) === null || _a === void 0 ? void 0 : _a.release()); });
+            // Turned off: nothing waits, in memory or in the store, not even what an earlier launch left.
+            this._gate.onDisabled(() => { var _a; void ((_a = this._queue) === null || _a === void 0 ? void 0 : _a.wipe()); });
         }
-        this.registration = new registration_1.RegistrationTracker((_g = config._queueStore) !== null && _g !== void 0 ? _g : resolveQueueStore().store, `espresso.registration.${this.projectId.replace(/[^A-Za-z0-9._-]/g, '_')}`, { getAppVersion: () => deviceInfo.collect().appVersion });
+        // The store of the queue is the one of the register ledger and of the install id; the signing store may be another object.
+        if (!this._wipeStores.some((known) => known === queueStore.store || (known.backing !== undefined && known.backing === queueStore.store.backing))) {
+            this._wipeStores.push(queueStore.store);
+        }
+        this.registration = new registration_1.RegistrationTracker((_g = config._queueStore) !== null && _g !== void 0 ? _g : resolveQueueStore().store, `${exports.RN_STORAGE_KEYS.registration}${this.projectId.replace(/[^A-Za-z0-9._-]/g, '_')}`, { getAppVersion: () => deviceInfo.collect().appVersion });
         const queue = this._queue;
         this._batcher = queue
             ? new track_batch_1.TrackBatcher({
-                request: this._transport.request.bind(this._transport),
+                request: this._gateTransport.requestFast.bind(this._gateTransport),
                 classify: _classifySendError,
                 pausedUntil: () => queue.pausedUntil(),
                 sendSingle: (path, body) => queue.send(path, body, false),
@@ -2672,7 +3055,7 @@ class PushClient {
                 delivered: () => queue.delivered(),
             })
             : null;
-        this.devices = new Devices(this._transport.request.bind(this._transport), () => this._pushToken, () => this._platform, () => this._provider, deviceInfo, this._displayAdapter, signingSession, attestationProvider, this._queue, this._batcher);
+        this.devices = new Devices(this._transport.request.bind(this._transport), () => this._pushToken, () => this._platform, () => this._provider, deviceInfo, this._displayAdapter, signingSession, attestationProvider, this._queue, this._batcher, typeof config.identityTokenProvider === 'function' ? config.identityTokenProvider : null, queueStore.store, () => this.wipeLocalData(), this._gate, this._gateTransport.requestFast.bind(this._gateTransport));
         this._autoTrack = config.autoTrack !== false;
         this._handleDeepLinks = config.handleDeepLinks === true;
         this._allowList = _parseAllowList(config.deepLinkAllowList);
@@ -2708,6 +3091,99 @@ class PushClient {
     queueStats() {
         return __awaiter(this, void 0, void 0, function* () {
             return this._queue ? this._queue.stats() : { pending: 0, dropped: 0 };
+        });
+    }
+    /**
+     * Deletes everything the SDK keeps on this device, and nothing on the server: the events that wait in the offline
+     * queue, the install id (`espresso.deviceId`), the request signing key, the record of what was registered, the user
+     * and the identity tokens the client holds. The SDK stores no push token, and the one the client holds in memory stays,
+     * so the next `register` needs no new one. It is the local half of `forgetDevice`, which calls it after the server
+     * confirms the erase. Resolves when it is done and never rejects.
+     *
+     * The client stays usable: the next `register` makes a new install id.
+     *
+     * @example
+     * await push.wipeLocalData()
+     */
+    wipeLocalData() {
+        return __awaiter(this, void 0, void 0, function* () {
+            this.devices._eraseIdentity();
+            this._gate.reset();
+            const steps = [
+                () => { var _a; return (_a = this._queue) === null || _a === void 0 ? void 0 : _a.wipe(); },
+                () => this.registration.reset(),
+                () => this._eraseKeys(),
+            ];
+            for (const step of steps) {
+                try {
+                    yield step();
+                }
+                catch ( /* best effort: the next step still runs */_a) { /* best effort: the next step still runs */ }
+            }
+        });
+    }
+    /**
+     * Tells the client whether the user gave consent. Only matters with `requireConsent`. `true` lets the client make
+     * requests and sends the events that waited; it is kept across restarts. `false` closes the gate again and removes
+     * the kept answer; what is already stored stays until it is sent or erased. Resolves when it is done and never
+     * rejects.
+     *
+     * @example
+     * await push.setConsent(true)
+     */
+    setConsent(granted) {
+        return __awaiter(this, void 0, void 0, function* () {
+            yield this._gate.setConsent(granted === true);
+        });
+    }
+    /**
+     * Turns the SDK off: it makes no request, reports nothing and holds no event, and the events that wait are deleted,
+     * in memory and in the store. The choice is kept and holds after the app restarts, until `enableSDK()`. The calls
+     * that need the server reject with `EspressoNotifyError` of code `SDK_DISABLED`. `wipeLocalData` and `forgetDevice`
+     * leave the choice as it is. Resolves when it is done and never rejects.
+     *
+     * @example
+     * await push.disableSDK()
+     */
+    disableSDK() {
+        return __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            yield this._gate.disable();
+            yield ((_a = this._queue) === null || _a === void 0 ? void 0 : _a.wipe());
+        });
+    }
+    /**
+     * Turns the SDK on after `disableSDK()`: requests go out again, and what the app reports from now on is sent. What was
+     * reported while it was off is gone. With `requireConsent`, consent is still asked for. Resolves when it is done and
+     * never rejects.
+     *
+     * @example
+     * await push.enableSDK()
+     */
+    enableSDK() {
+        return __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            yield this._gate.enable();
+            (_a = this._queue) === null || _a === void 0 ? void 0 : _a.tokenSet();
+        });
+    }
+    /** The install id and the public key of request signing, in each store, and the signing key in the native signer. */
+    _eraseKeys() {
+        return __awaiter(this, void 0, void 0, function* () {
+            var _a, _b, _c;
+            for (const store of this._wipeStores) {
+                for (const key of [exports.RN_STORAGE_KEYS.deviceId, exports.RN_STORAGE_KEYS.signingPublicKey, exports.RN_STORAGE_KEYS.consent]) {
+                    try {
+                        yield _forgetKey(store, key);
+                    }
+                    catch ( /* the other keys are still deleted */_d) { /* the other keys are still deleted */ }
+                }
+            }
+            (_a = this._signingSession) === null || _a === void 0 ? void 0 : _a.reset();
+            try {
+                yield ((_c = (_b = this._signer) === null || _b === void 0 ? void 0 : _b.deleteKey) === null || _c === void 0 ? void 0 : _c.call(_b, SIGNING_KEY_ID));
+            }
+            catch ( /* the next generate replaces the key */_e) { /* the next generate replaces the key */ }
         });
     }
     /**
@@ -2771,7 +3247,11 @@ class PushClient {
             return;
         }
         if (this._autoTrack && info.notificationId) {
-            this.devices.trackOpen(info.notificationId);
+            // The body of the push is an `opened`; an action button is one `clicked` with the id of the button, never both.
+            if (_isDefaultAction(info.actionId))
+                this.devices.trackOpen(info.notificationId);
+            else
+                this.devices.trackClick(info.notificationId, undefined, info.actionId);
         }
         const data = (_a = info.data) !== null && _a !== void 0 ? _a : {};
         const rawUrl = data.url;
@@ -3150,12 +3630,22 @@ const MAX_PREFERENCE_ITEMS = 50;
 const MAX_CATEGORY_IDENTIFIER_BYTES = 64;
 /** The most bytes of serialized metadata the server accepts on register, identify and updateMetadata. @internal */
 const MAX_METADATA_BYTES = 4096;
+/** The server refuses a lifecycle value (`external_id`, the `from` and `to` of an identity change) over 255 bytes. */
+const MAX_LIFECYCLE_VALUE_LENGTH = 255;
 /** The shape of a business event name the server accepts (`customEventNamePattern`). @internal */
 const CUSTOM_EVENT_NAME = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$/;
 /** The names of the delivery lifecycle: they need a notification and are not business events. @internal */
 const RESERVED_EVENT_NAMES = new Set(['opened', 'clicked', 'received', 'dismissed', 'converted', 'app_opened']);
 class Devices {
-    constructor(_request, _getToken, _getPlatform, _getProvider, _deviceInfo, _displayAdapter, _signingSession = null, _attestationProvider = null, _queue = null, _batcher = null) {
+    constructor(_request, _getToken, _getPlatform, _getProvider, _deviceInfo, _displayAdapter, _signingSession = null, _attestationProvider = null, _queue = null, _batcher = null, _identityTokenProvider = null, 
+    /** Where `espresso.deviceId` is kept: register reads (or creates) the install id there when the app passes none. */
+    _idStore = null, 
+    /** `PushClient.wipeLocalData`: what `forgetDevice` runs once the server no longer holds the device. */
+    _wipeLocal = null, 
+    /** `requireConsent`: while it is closed the delivery events go to the queue, which holds them, not to the batcher. */
+    _gate = null, 
+    /** The way a fire-and-forget report leaves (`trackAppOpened`, and the reports with no queue): in the tick of the call. */
+    _requestFast = null) {
         this._request = _request;
         this._getToken = _getToken;
         this._getPlatform = _getPlatform;
@@ -3166,8 +3656,81 @@ class Devices {
         this._attestationProvider = _attestationProvider;
         this._queue = _queue;
         this._batcher = _batcher;
+        this._identityTokenProvider = _identityTokenProvider;
+        this._idStore = _idStore;
+        this._wipeLocal = _wipeLocal;
+        this._gate = _gate;
+        this._requestFast = _requestFast;
+        /**
+         * The identity token of each user the app handed over or the provider renewed, by `externalId`. In memory only:
+         * never written to a store, the offline queue or a log. Emptied by `unregister` and `forgetDevice`.
+         */
+        this._identityTokens = new Map();
+        /** The provider calls under way, by `externalId`: calls of one user that expire together share one. */
+        this._renewals = new Map();
+        /** Changes at every logout, so a renewal that ends after it does not bring a token back. */
+        this._identityEpoch = 0;
         /** One-shot warn guard so attest() never spams logs on every boot. */
         this._attestWarned = false;
+    }
+    /**
+     * Runs a call that carries an identity token. The token is the one the app passed, else the one kept for
+     * `externalId`. A 401 `identity_token_expired` with a provider asks it for a new token once and repeats the call
+     * once; any other error, no provider, a provider that fails or a second failure rethrows the error of the call.
+     */
+    _withIdentityToken(externalId, explicit, send) {
+        return __awaiter(this, void 0, void 0, function* () {
+            let sent = explicit || undefined;
+            if (sent && externalId)
+                this._identityTokens.set(externalId, sent);
+            else if (!sent && externalId)
+                sent = this._identityTokens.get(externalId);
+            try {
+                return yield send(sent);
+            }
+            catch (error) {
+                if (!externalId || !this._identityTokenProvider || !_isExpiredIdentityToken(error))
+                    throw error;
+                // Another call of this user may have renewed the token while this one was on its way.
+                const kept = this._identityTokens.get(externalId);
+                const fresh = kept && kept !== sent ? kept : yield this._renewIdentityToken(externalId);
+                if (!fresh)
+                    throw error;
+                return yield send(fresh);
+            }
+        });
+    }
+    /** One provider call per user at a time; null when it fails, returns no text, or a logout came meanwhile. */
+    _renewIdentityToken(externalId) {
+        const running = this._renewals.get(externalId);
+        if (running)
+            return running;
+        const provider = this._identityTokenProvider;
+        const epoch = this._identityEpoch;
+        const renewal = Promise.resolve()
+            .then(() => provider(externalId))
+            .then((token) => {
+            if (typeof token !== 'string' || token === '' || epoch !== this._identityEpoch)
+                return null;
+            this._identityTokens.set(externalId, token);
+            return token;
+        }, () => null)
+            .finally(() => {
+            this._renewals.delete(externalId);
+        });
+        this._renewals.set(externalId, renewal);
+        return renewal;
+    }
+    /** The user and the tokens the client holds, for `wipeLocalData`. @internal */
+    _eraseIdentity() {
+        this._externalId = undefined;
+        this._forgetIdentityTokens();
+    }
+    /** The logout: no token of any user stays in the client. */
+    _forgetIdentityTokens() {
+        this._identityEpoch += 1;
+        this._identityTokens.clear();
+        this._renewals.clear();
     }
     /**
      * Reports a delivery event (opened, clicked, received, dismissed). With the offline queue it goes through the batcher:
@@ -3176,7 +3739,7 @@ class Devices {
      */
     _reportDelivery(body) {
         return __awaiter(this, void 0, void 0, function* () {
-            if (!this._batcher)
+            if (!this._batcher || (this._gate && !this._gate.isOpen()))
                 return this._report("/v1/notifications/track", body);
             try {
                 yield this._batcher.add(body);
@@ -3193,11 +3756,12 @@ class Devices {
      */
     _report(path_1, body_1) {
         return __awaiter(this, arguments, void 0, function* (path, body, withEventId = false) {
+            var _a;
             if (!this._queue) {
                 try {
-                    yield this._request(path, { method: 'POST', body: JSON.stringify(body) });
+                    yield ((_a = this._requestFast) !== null && _a !== void 0 ? _a : this._request)(path, { method: 'POST', body: JSON.stringify(body) });
                 }
-                catch (_a) {
+                catch (_b) {
                     // best-effort, silent
                 }
                 return;
@@ -3205,8 +3769,21 @@ class Devices {
             try {
                 yield this._queue.send(path, body, withEventId);
             }
-            catch (_b) {
+            catch (_c) {
                 // best-effort, silent
+            }
+        });
+    }
+    /** The `espresso.deviceId` of the install, created once; undefined when the store cannot be read. Never throws. */
+    _installId() {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (!this._idStore)
+                return undefined;
+            try {
+                return yield _stableDeviceId(this._idStore);
+            }
+            catch (_a) {
+                return undefined;
             }
         });
     }
@@ -3216,7 +3793,7 @@ class Devices {
      */
     register(data) {
         return __awaiter(this, void 0, void 0, function* () {
-            var _a, _b, _c;
+            var _a, _b, _c, _d, _e;
             const pushToken = data.pushToken || this._getToken();
             const platform = data.platform || this._getPlatform();
             if (!pushToken || !platform) {
@@ -3233,13 +3810,19 @@ class Devices {
             const finalMetadata = Object.keys(deviceMeta).length > 0 || data.metadata
                 ? Object.assign(Object.assign({}, deviceMeta), data.metadata) : undefined;
             const resolvedProvider = data.provider || this._getProvider();
+            // The device language goes in the top-level `language` and in `metadata.locale` (the server keeps both in step).
+            const metaLocale = finalMetadata === null || finalMetadata === void 0 ? void 0 : finalMetadata.locale;
+            const language = typeof metaLocale === 'string' && metaLocale ? metaLocale : readLocalization().locale;
+            const registerMetadata = language && !metaLocale ? Object.assign(Object.assign({}, finalMetadata), { locale: language }) : finalMetadata;
             const payload = {
                 pushToken,
                 platform,
-                device_id: data.deviceId,
-                app_version: (_a = data.appVersion) !== null && _a !== void 0 ? _a : autoAppVersion,
-                os_version: (_b = data.osVersion) !== null && _b !== void 0 ? _b : autoOsVersion,
-                metadata: finalMetadata,
+                sdk: 'react-native',
+                device_id: (_a = data.deviceId) !== null && _a !== void 0 ? _a : (yield this._installId()),
+                app_version: (_b = data.appVersion) !== null && _b !== void 0 ? _b : autoAppVersion,
+                os_version: (_c = data.osVersion) !== null && _c !== void 0 ? _c : autoOsVersion,
+                language,
+                metadata: registerMetadata,
                 user: data.user
                     ? {
                         name: data.user.name,
@@ -3251,10 +3834,6 @@ class Devices {
             // for backends that were registered before the field existed).
             if (resolvedProvider) {
                 payload.provider = resolvedProvider;
-            }
-            // The proof that this identifier belongs to whoever is calling: only when the app has it.
-            if ((_c = data.user) === null || _c === void 0 ? void 0 : _c.identityHash) {
-                payload.identity_hash = data.user.identityHash;
             }
             // Include signing fields when signing is enabled (#813).
             // Initialise the session so the key is ready before the register POST goes out.
@@ -3270,15 +3849,16 @@ class Devices {
                         payload.signing_key_type = 'ecdsa_p256';
                     }
                 }
-                catch (_d) {
+                catch (_f) {
                     // best-effort: if key generation fails, proceed without signing fields
                 }
             }
             try {
-                const result = yield this._request("/v1/devices/register", {
+                const result = yield this._withIdentityToken((_d = data.user) === null || _d === void 0 ? void 0 : _d.externalId, (_e = data.user) === null || _e === void 0 ? void 0 : _e.identityToken, (identityToken) => this._request("/v1/devices/register", {
                     method: "POST",
-                    body: JSON.stringify(payload),
-                });
+                    // The proof that this identifier belongs to whoever is calling: only for a user, and only when the app has it.
+                    body: JSON.stringify(data.user && identityToken ? Object.assign(Object.assign({}, payload), { identity_token: identityToken }) : payload),
+                }));
                 if (data.user)
                     this._externalId = data.user.externalId;
                 return result;
@@ -3314,20 +3894,32 @@ class Devices {
                     metadata: user.metadata,
                 },
             };
-            if (user.identityHash) {
-                payload.identity_hash = user.identityHash;
-            }
             try {
-                const result = yield this._request("/v1/devices/identify", {
+                const result = yield this._withIdentityToken(user.externalId, user.identityToken, (identityToken) => this._request("/v1/devices/identify", {
                     method: "POST",
-                    body: JSON.stringify(payload),
-                });
+                    body: JSON.stringify(identityToken ? Object.assign(Object.assign({}, payload), { identity_token: identityToken }) : payload),
+                }));
+                const previous = this._externalId;
                 this._externalId = user.externalId;
+                if (previous !== user.externalId)
+                    yield this._recordIdentityChange(previous !== null && previous !== void 0 ? previous : '', user.externalId, token);
                 return result;
             }
             catch (error) {
                 throw _operationError('identify', error);
             }
+        });
+    }
+    /**
+     * Tells the server who the device belongs to now (`user.identified`): one `identity` lifecycle event with the user
+     * before and after, through the offline queue. A value over 255 bytes is refused by the server, so nothing
+     * is sent for it. Silent — never throws.
+     */
+    _recordIdentityChange(from, to, pushToken) {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (_toUtf8Bytes(from).length > MAX_LIFECYCLE_VALUE_LENGTH || _toUtf8Bytes(to).length > MAX_LIFECYCLE_VALUE_LENGTH)
+                return;
+            yield this.recordLifecycle('identity', from, to, to || undefined, pushToken);
         });
     }
     /**
@@ -3356,11 +3948,17 @@ class Devices {
                     method: "POST",
                     body: JSON.stringify({ pushToken: token }),
                 });
+                const previous = this._externalId;
                 this._externalId = undefined;
+                if (previous)
+                    yield this._recordIdentityChange(previous, '', token);
                 return result;
             }
             catch (error) {
                 throw _operationError('unregister', error);
+            }
+            finally {
+                this._forgetIdentityTokens(); // the logout: the token of the user goes, whatever the answer was
             }
         });
     }
@@ -3433,11 +4031,12 @@ class Devices {
      */
     trackAppOpened(pushToken) {
         return __awaiter(this, void 0, void 0, function* () {
+            var _a;
             const token = pushToken || this._getToken();
             if (!token)
                 return;
             try {
-                yield this._request("/v1/notifications/track", {
+                yield ((_a = this._requestFast) !== null && _a !== void 0 ? _a : this._request)("/v1/notifications/track", {
                     method: "POST",
                     body: JSON.stringify({
                         notification_id: 0,
@@ -3446,7 +4045,7 @@ class Devices {
                     }),
                 });
             }
-            catch (_a) {
+            catch (_b) {
                 // best-effort, silent
             }
         });
@@ -3470,28 +4069,26 @@ class Devices {
         });
     }
     /**
-     * Tracks when a user clicks an action button in a push notification.
-     * Call this when handling a specific notification action.
+     * Tracks when a user clicks an action button in a push notification: one `clicked` event, with the id of the
+     * button as `action_id` when you pass `actionId`. With `autoTrack` on, the SDK calls it for the button taps it
+     * sees, so you call it yourself only when you handle the response on your own. An `actionId` the server would
+     * refuse (empty, over 64 characters, a control or format character) is left out and the click still counts.
      * Silent — never throws errors.
      *
      * @example
      * Notifications.addNotificationResponseReceivedListener(response => {
      *   const notifId = response.notification.request.content.data?.notificationId;
      *   if (notifId && response.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) {
-     *     push.devices.trackClick(notifId);
+     *     push.devices.trackClick(notifId, undefined, response.actionIdentifier);
      *   }
      * });
      */
-    trackClick(notificationId, pushToken) {
+    trackClick(notificationId, pushToken, actionId) {
         return __awaiter(this, void 0, void 0, function* () {
             const token = pushToken || this._getToken();
             if (!token || !notificationId)
                 return;
-            yield this._reportDelivery({
-                notification_id: Number(notificationId),
-                event: "clicked",
-                push_token: token,
-            });
+            yield this._reportDelivery(Object.assign({ notification_id: Number(notificationId), event: "clicked", push_token: token }, (_validActionId(actionId) ? { action_id: actionId } : {})));
         });
     }
     /**
@@ -3546,21 +4143,25 @@ class Devices {
      * call behind a "delete my data" button (LGPD, GDPR). It cannot be undone.
      *
      * Sends the push token of the client (or `pushToken`), plus `deviceId` and
-     * `identityHash` when you pass them. When the project asks for the proof of
-     * identity, `identityHash` is the HMAC of the external id of the user of the
-     * device, computed by your backend. Throws on any answer that is not 2xx
+     * `identityToken` when you pass them. When the project asks for the proof of
+     * identity, `identityToken` is the JWT your backend signed for the user of the
+     * device; without it the client sends the token it kept for that user. The user
+     * is `externalId`, else the last one the client identified (renewing an expired
+     * token needs it, and an app that restarted since the login must pass it). Throws on any answer that is not 2xx
      * (`EspressoNotifyHttpError`, with `status` and `code`), including 404
      * `not_found` when nothing matched, and without a token or a `deviceId`.
      *
-     * After it succeeds the client forgets the user, and the device is unknown to
-     * the server: stop calling the client, or call `register` again for a new
-     * device.
+     * After it succeeds, and also after a 404 (the server no longer knows the device, and the call still throws), the
+     * client runs `wipeLocalData`: it forgets the user, the tokens, the offline queue, the install id and the signing
+     * key. After any other failure it keeps all of that, so the call can be repeated. The device is unknown to the
+     * server: stop calling the client, or call `register` again for a new device.
      *
      * @example
-     * await push.devices.forgetDevice({ identityHash: await myBackend.identityHash(userId) })
+     * await push.devices.forgetDevice({ identityToken: await myBackend.identityToken(userId), externalId: userId })
      */
     forgetDevice() {
         return __awaiter(this, arguments, void 0, function* (options = {}) {
+            var _a, _b;
             const token = options.pushToken || this._getToken();
             if (!token && !options.deviceId) {
                 throw new Error("❌ Validation Error: 'pushToken' (in the constructor or in the options) or 'deviceId' is required in forgetDevice.");
@@ -3570,18 +4171,22 @@ class Devices {
                 payload.push_token = token;
             if (options.deviceId)
                 payload.device_id = options.deviceId;
-            if (options.identityHash)
-                payload.identity_hash = options.identityHash;
             try {
-                yield this._request("/v1/devices", {
+                yield this._withIdentityToken(options.externalId || this._externalId, options.identityToken, (identityToken) => this._request("/v1/devices", {
                     method: "DELETE",
-                    body: JSON.stringify(payload),
-                });
+                    body: JSON.stringify(identityToken ? Object.assign(Object.assign({}, payload), { identity_token: identityToken }) : payload),
+                }));
             }
             catch (error) {
+                // A 404 says the server no longer knows the device, so the local data goes too; the call still reports the 404.
+                // Any other failure (403, 5xx, a network error) keeps everything on the device, so the call can be repeated.
+                if (error instanceof errors_1.EspressoNotifyHttpError && error.status === 404)
+                    yield ((_a = this._wipeLocal) === null || _a === void 0 ? void 0 : _a.call(this));
                 throw _operationError('forgetDevice', error);
             }
             this._externalId = undefined;
+            this._forgetIdentityTokens();
+            yield ((_b = this._wipeLocal) === null || _b === void 0 ? void 0 : _b.call(this));
         });
     }
     /**
@@ -3591,22 +4196,24 @@ class Devices {
      * device must have been identified (or registered with a user) first.
      *
      * `externalId` is optional: without it the call uses the one of the last
-     * successful `identify` or `register` of this client. Throws when there is no
-     * external id or no push token, and when the call fails.
+     * successful `identify` or `register` of this client. When the project asks
+     * for the proof of identity, the call carries the `identityToken` of
+     * `options`, else the token the client kept for that user. Throws when there
+     * is no external id or no push token, and when the call fails.
      *
      * @example
      * const prefs = await push.devices.getPreferences()
      * const muted = prefs.filter((p) => p.optedOut).map((p) => p.categoryIdentifier)
      */
-    getPreferences(externalId, pushToken) {
-        return __awaiter(this, void 0, void 0, function* () {
+    getPreferences(externalId_1, pushToken_1) {
+        return __awaiter(this, arguments, void 0, function* (externalId, pushToken, options = {}) {
             const { id, token } = this._preferencesTarget('getPreferences', externalId, pushToken);
             try {
-                // A POST with the two values in the body: they never go in a URL, which proxies and logs keep.
-                const result = yield this._request('/v1/preferences/query', {
+                // A POST with the values in the body: they never go in a URL, which proxies and logs keep.
+                const result = yield this._withIdentityToken(id, options.identityToken, (identityToken) => this._request('/v1/preferences/query', {
                     method: 'POST',
-                    body: JSON.stringify({ external_id: id, push_token: token }),
-                });
+                    body: JSON.stringify(Object.assign({ external_id: id, push_token: token }, (identityToken ? { identity_token: identityToken } : {}))),
+                }));
                 if (!Array.isArray(result))
                     return [];
                 return result.map((p) => {
@@ -3629,13 +4236,13 @@ class Devices {
      * 64 bytes; anything else throws before the call. Resolves with `{ updated }`,
      * the number of preferences written.
      *
-     * `externalId` works as in `getPreferences`.
+     * `externalId` and the identity token of `options` work as in `getPreferences`.
      *
      * @example
      * await push.devices.setPreferences([{ categoryIdentifier: 'promotions', optedOut: true }])
      */
-    setPreferences(preferences, externalId, pushToken) {
-        return __awaiter(this, void 0, void 0, function* () {
+    setPreferences(preferences_1, externalId_1, pushToken_1) {
+        return __awaiter(this, arguments, void 0, function* (preferences, externalId, pushToken, options = {}) {
             if (!Array.isArray(preferences) || preferences.length === 0 || preferences.length > MAX_PREFERENCE_ITEMS) {
                 throw new Error(`❌ Validation Error: 'preferences' must have 1 to ${MAX_PREFERENCE_ITEMS} items.`);
             }
@@ -3649,17 +4256,13 @@ class Devices {
             }
             const { id, token } = this._preferencesTarget('setPreferences', externalId, pushToken);
             try {
-                const result = (yield this._request('/v1/preferences', {
+                const result = (yield this._withIdentityToken(id, options.identityToken, (identityToken) => this._request('/v1/preferences', {
                     method: 'POST',
-                    body: JSON.stringify({
-                        external_id: id,
-                        push_token: token,
-                        preferences: preferences.map((p) => ({
+                    body: JSON.stringify(Object.assign({ external_id: id, push_token: token, preferences: preferences.map((p) => ({
                             category_identifier: p.categoryIdentifier,
                             opted_out: p.optedOut,
-                        })),
-                    }),
-                }));
+                        })) }, (identityToken ? { identity_token: identityToken } : {}))),
+                })));
                 return { updated: typeof (result === null || result === void 0 ? void 0 : result.updated) === 'number' ? result.updated : preferences.length };
             }
             catch (error) {

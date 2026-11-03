@@ -591,3 +591,5 @@ describe('Transport signing — POST/GET header injection', () => {
     expect(body.signing_key_type).toBeUndefined();
   });
 });
+
+// feature: security.request-signing

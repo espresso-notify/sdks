@@ -204,7 +204,7 @@ describe('the hook and the public key', () => {
     const after = snapshot(dir);
     for (const [name, text] of Object.entries(after)) expect(text).not.toContain(PUBLIC_KEY);
     const added = Object.keys(after).filter((name) => !(name in before));
-    expect(added.every((name) => name.endsWith('.bak'))).toBe(true);
+    expect(added.every((name) => name.startsWith('.espresso-notify-backup'))).toBe(true);
   });
 
   it('without a key the snippet carries the placeholder', async () => {

@@ -20,6 +20,7 @@ export type RegistrationKind = 'register' | 'identify';
 export interface RegistrationStore {
     getItem(key: string): Promise<string | null>;
     setItem(key: string, value: string): Promise<void>;
+    removeItem?(key: string): Promise<void>;
 }
 /** What a call sends about the device and the user; the fingerprint is made of it. */
 export interface RegistrationParts {
@@ -28,9 +29,9 @@ export interface RegistrationParts {
     appVersion?: string;
     /** The external id of the user, or null/undefined for an anonymous device. */
     userId?: string | null;
-    /** `identify` only: the display name and the proof of identity sent with the user; a change of either is a change. */
+    /** `identify` only: the display name and the identity token sent with the user; a change of either is a change. */
     userName?: string | null;
-    identityHash?: string | null;
+    identityToken?: string | null;
 }
 /** The permission to run a call, given by {@link RegistrationTracker.plan} and handed back to `commit` when the call worked. */
 export interface RegistrationTicket {
@@ -76,6 +77,8 @@ export declare class RegistrationTracker {
     commit(ticket: RegistrationTicket): Promise<void>;
     /** Forgets a call, so the next `plan` of it runs (the user logged out: the next login must identify again). */
     forget(kind: RegistrationKind): Promise<void>;
+    /** Forgets everything, in memory and in the store (`wipeLocalData`): every call runs again. Never throws. */
+    reset(): Promise<void>;
     private _fingerprint;
     private _read;
     /** The record of a stored text; anything that is not the expected shape (no value, an older SDK, damage) is empty. */

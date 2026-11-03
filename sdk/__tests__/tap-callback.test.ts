@@ -415,7 +415,8 @@ describe('a custom adapter that only has onResponse', () => {
     await flushPromises()
 
     expect(handler).toHaveBeenCalledWith({ notificationId: 5, data: {}, url: undefined, actionId: 'go' })
-    expect(tracked()).toEqual([{ notification_id: 5, event: 'opened', push_token: 'tok' }])
+    // sdk-parity T26 (PAR-19): the tap carries the id of an action button, so it is one `clicked` with that id, no `opened`
+    expect(tracked()).toEqual([{ notification_id: 5, event: 'clicked', push_token: 'tok', action_id: 'go' }])
   })
 })
 
@@ -590,3 +591,7 @@ describe('React Native CLI mode, react-native-notify-kit', () => {
 
 // A module, so that its top-level names do not clash with the other test files that are scripts.
 export {}
+
+// feature: tracking.dismissed
+// feature: tracking.tap-semantics
+// feature: tracking.on-opened-callback

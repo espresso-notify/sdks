@@ -1242,6 +1242,7 @@ if (require.main === module) {
   run(process.argv.slice(2), {
     cwd: process.cwd(),
     spawn: childProcess.spawn,
+    spawnSync: childProcess.spawnSync,
     stdout: process.stdout,
     stderr: process.stderr,
     stdin: process.stdin,

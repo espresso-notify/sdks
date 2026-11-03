@@ -402,3 +402,5 @@ describe('what is not batched', () => {
     expect(calls).toHaveLength(0)
   })
 })
+
+// feature: tracking.batching

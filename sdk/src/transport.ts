@@ -100,6 +100,13 @@ export const SUPPORTED_CONTRACTS: number[] = [1];
 /** The time the native module gives one request, from the start of the call to the last byte of the answer. */
 export const NATIVE_TIMEOUT_MS = 30000;
 
+/** The version of this package; `package.json` says the same (a test keeps the two equal). */
+export const SDK_VERSION = '0.1.0';
+
+/** The header that names the SDK and its version on every request, as `react-native/<version>`. */
+export const SDK_HEADER = 'X-Espresso-SDK';
+export const SDK_HEADER_VALUE = `react-native/${SDK_VERSION}`;
+
 /** The name the native module registers under. */
 const NATIVE_MODULE_NAME = 'EspressoNotifyTransport';
 
@@ -182,6 +189,7 @@ function flattenHeaders(projectId: string, extra: unknown): string[] {
   const add = (name: string, value: string) => merged.set(name.toLowerCase(), [name, value]);
   add('Authorization', `Bearer ${projectId}`);
   add('Content-Type', 'application/json');
+  add(SDK_HEADER, SDK_HEADER_VALUE);
   const plain =
     extra !== null && typeof extra === 'object' && !Array.isArray(extra) && Object.getPrototypeOf(extra) === Object.prototype;
   if (plain) {

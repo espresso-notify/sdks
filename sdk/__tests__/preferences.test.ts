@@ -236,3 +236,5 @@ describe('signing a preferences call (RNV-12)', () => {
 });
 
 export {};
+
+// feature: metadata.preferences

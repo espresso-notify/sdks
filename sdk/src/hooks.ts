@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { PushClient, resolvePushProvider, describeMissingPushProvider } from './index'
-import type { PushProvider, PermissionStatus, NotificationOpenedHandler, OfflineQueueConfig, PrivateTransportMode } from './index'
+import type { PushProvider, PermissionStatus, NotificationOpenedHandler, OfflineQueueConfig, PrivateTransportMode, IdentityTokenProvider } from './index'
 import { EspressoNotifyError } from './errors'
 import { withRetry } from './retry'
 import type { RegistrationKind, RegistrationParts } from './registration'
@@ -45,14 +45,20 @@ export interface UsePushNotificationsConfig {
    */
   userName?: string | null
   /**
-   * The proof of identity of `externalId`: HMAC-SHA256(externalId, identity secret
-   * of the project) as lower-case hex, computed by YOUR backend and handed to the
-   * app after the user logs in (the secret never goes into the app). Sent with
-   * identify() as `identity_hash`. Needed when the project asks for the proof.
-   * When it arrives after `externalId`, the hook identifies again with it; when it
-   * goes away while the user stays, nothing is sent.
+   * The proof of identity of `externalId`: a JWT (ES256) signed by YOUR backend for this user and handed to the
+   * app after the user logs in (the private key never goes into the app). Sent with identify() as `identity_token`
+   * and again with the identify that follows a push token rotation. Needed when the project asks for the proof.
+   * When it arrives after `externalId` or changes, the hook identifies again with it; when it goes away while the
+   * user stays, nothing is sent. Logging out (`externalId` becoming null) makes the client forget it.
    */
-  identityHash?: string | null
+  identityToken?: string | null
+  /**
+   * Asks your app for a new identity token when the server answers 401 `identity_token_expired`: the client calls
+   * it with the `externalId`, once, and repeats the call once with what it returns (see
+   * `ClientConfig.identityTokenProvider`). The hook calls the latest function you passed, so it can be an inline
+   * function. Without it, an expired token ends the call with that error.
+   */
+  identityTokenProvider?: IdentityTokenProvider
   /** Device-level metadata sent on register() (locale, plan, etc.) */
   metadata?: Record<string, unknown>
   /**
@@ -201,7 +207,8 @@ export function usePushNotifications({
   projectId,
   externalId = null,
   userName = null,
-  identityHash = null,
+  identityToken = null,
+  identityTokenProvider,
   metadata,
   pushToken: externalToken,
   pushTokenProvider: externalTokenProvider,
@@ -228,13 +235,23 @@ export function usePushNotifications({
   onOpenedRef.current = onNotificationOpened
   const prevUserRef        = useRef<string | null>(null)
   const prevUserNameRef    = useRef<string | null>(null)
-  const prevHashRef        = useRef<string | null>(null)
+  const prevTokenRef       = useRef<string | null>(null)
   const providerRef        = useRef<PushProvider | null>(null)
   const permStatusRef      = useRef<PermissionStatus>(null)
   // The latest identity and metadata of the component: a token rotation registers the new token with these, not with
   // the ones the hook started with.
-  const latestRef          = useRef({ externalId, userName, identityHash, metadata })
-  latestRef.current = { externalId, userName, identityHash, metadata }
+  const latestRef          = useRef({ externalId, userName, identityToken, metadata })
+  latestRef.current = { externalId, userName, identityToken, metadata }
+  // The latest identityTokenProvider of the component: the client asks for a new token through this ref.
+  const tokenProviderRef   = useRef<IdentityTokenProvider | undefined>(identityTokenProvider)
+  tokenProviderRef.current = identityTokenProvider
+  // The token the provider last returned, with the token of the props it replaced: a later identify (a rotation, a
+  // return to the foreground) sends it instead of the expired one, while the app still passes that same prop.
+  const renewedRef         = useRef<{ externalId: string; replaced: string | null; token: string } | null>(null)
+  const tokenOf = (id: string, passed: string | null): string | null => {
+    const renewed = renewedRef.current
+    return renewed && renewed.externalId === id && renewed.replaced === passed ? renewed.token : passed
+  }
   // The end of the token rotations under way: each one registers and identifies the new token before the next starts,
   // and an identity change waits for it (the server refuses to identify a token it has not registered yet).
   const rotationRef        = useRef<Promise<void> | null>(null)
@@ -343,6 +360,16 @@ export function usePushNotifications({
           ...(deepLinkAllowList !== undefined ? { deepLinkAllowList } : {}),
           ...(offlineQueue !== undefined ? { offlineQueue } : {}),
           privateTransport,
+          // Asks the latest provider of the component and remembers what it returned (see renewedRef).
+          identityTokenProvider: async (id: string) => {
+            const provide = tokenProviderRef.current
+            if (!provide) throw new Error('no identityTokenProvider')
+            const token = await provide(id)
+            if (typeof token === 'string' && token) {
+              renewedRef.current = { externalId: id, replaced: latestRef.current.identityToken || null, token }
+            }
+            return token
+          },
           // Registered when the client is created, so the tap that launched the app reaches it.
           ...(onOpenedRef.current ? { onNotificationOpened: (event) => onOpenedRef.current?.(event) } : {}),
         })
@@ -373,7 +400,8 @@ export function usePushNotifications({
             // alone is anonymous, so a personalized send by externalId would not reach it.
             const step = async () => {
               if (cancelled) return
-              const { externalId: id, userName: name, identityHash: hash, metadata: meta } = latestRef.current
+              const { externalId: id, userName: name, identityToken: passed, metadata: meta } = latestRef.current
+              const proof = id ? tokenOf(id, passed || null) : null
               let registered = true
               try {
                 await runOnce(client, 'register', { token: newToken, userId: id }, () => withRetry(
@@ -388,10 +416,10 @@ export function usePushNotifications({
               client.provider = newProvider
               if (registered && id) {
                 try {
-                  await runOnce(client, 'identify', { token: newToken, userId: id, userName: name, identityHash: hash }, () => withRetry(() => client.devices.identify({
+                  await runOnce(client, 'identify', { token: newToken, userId: id, userName: name, identityToken: proof }, () => withRetry(() => client.devices.identify({
                     externalId: id,
                     ...(name ? { name } : {}),
-                    ...(hash ? { identityHash: hash } : {}),
+                    ...(proof ? { identityToken: proof } : {}),
                   }, newToken), stopped))
                 } catch { /* the next identity change or rotation tries again */ }
                 if (cancelled) return
@@ -443,17 +471,18 @@ export function usePushNotifications({
             const pending = rotationRef.current
             if (pending) await pending
             if (cancelled) return
-            const { externalId: id, userName: name, identityHash: hash, metadata: meta } = latestRef.current
+            const { externalId: id, userName: name, identityToken: passed, metadata: meta } = latestRef.current
+            const proof = id ? tokenOf(id, passed || null) : null
             const current = client.pushToken ?? token ?? ''
             try {
               await runOnce(client, 'register', { token: current, userId: id }, () => withRetry(() => client.devices.register({ metadata: meta }), stopped))
             } catch { return } // the next foreground tries again
             if (!id || cancelled) return
             try {
-              await runOnce(client, 'identify', { token: current, userId: id, userName: name, identityHash: hash }, () => withRetry(() => client.devices.identify({
+              await runOnce(client, 'identify', { token: current, userId: id, userName: name, identityToken: proof }, () => withRetry(() => client.devices.identify({
                 externalId: id,
                 ...(name ? { name } : {}),
-                ...(hash ? { identityHash: hash } : {}),
+                ...(proof ? { identityToken: proof } : {}),
               }, current), stopped))
             } catch { /* the next foreground tries again */ }
           } finally {
@@ -488,9 +517,10 @@ export function usePushNotifications({
     const token    = pushToken ?? undefined
     const prevId   = prevUserRef.current
     const prevName = prevUserNameRef.current
-    const hash     = identityHash || null
-    // A new hash for the same user (it arrived late, or was renewed) is sent; a hash that goes away is not.
-    const hashChanged = hash !== null && hash !== prevHashRef.current
+    const passed   = identityToken || null
+    // A new token for the same user (it arrived late, or the app renewed it) is sent; a token that goes away is not.
+    const tokenChanged = passed !== null && passed !== prevTokenRef.current
+    const proof    = externalId ? tokenOf(externalId, passed) : null
 
     // A token rotation under way registers the new token first; what the identity asks for waits for it.
     const send = (call: () => Promise<unknown>) => {
@@ -498,23 +528,26 @@ export function usePushNotifications({
       ;(pending ? pending.then(call) : call()).catch(() => {})
     }
 
-    if (externalId && (externalId !== prevId || userName !== prevName || hashChanged)) {
+    if (externalId && (externalId !== prevId || userName !== prevName || tokenChanged)) {
       // Only when the server may not have this user in this session (registration.ts); a failed call is not remembered.
-      send(() => runOnce(client, 'identify', { token: client.pushToken ?? token ?? '', userId: externalId, userName, identityHash: hash },
+      send(() => runOnce(client, 'identify', { token: client.pushToken ?? token ?? '', userId: externalId, userName, identityToken: proof },
         () => withRetry(() => client.devices.identify({
           externalId,
           ...(userName ? { name: userName } : {}),
-          ...(hash ? { identityHash: hash } : {}),
+          ...(proof ? { identityToken: proof } : {}),
         }, token), { isCancelled: () => unmountedRef.current })))
     } else if (!externalId && prevId !== null) {
       // The device is anonymous again: the next login must identify, even as the same user in this session.
       send(() => client.devices.unregister(token).then(async (result) => { await client.registration?.forget('identify'); return result }))
     }
 
+    // The user logged out: the token the provider returned for him is not kept.
+    if (!externalId) renewedRef.current = null
+
     prevUserRef.current     = externalId
     prevUserNameRef.current = userName ?? null
-    prevHashRef.current     = hash
-  }, [externalId, userName, identityHash, isReady]) // eslint-disable-line react-hooks/exhaustive-deps
+    prevTokenRef.current    = passed
+  }, [externalId, userName, identityToken, isReady]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── AppState permission re-check (#807) ──────────────────────────────────────
   // Only fires on foreground transitions; never duplicates the app_opened logic
@@ -592,8 +625,9 @@ export function usePushNotifications({
  * Lightweight hook for apps that manage PushClient manually and only want
  * reactive identity management (identify on login, unregister on logout).
  *
- * Pass `identityHash` (computed by your backend) when the project asks for the
- * proof of identity; see `UsePushNotificationsConfig.identityHash`.
+ * Pass `identityToken` (signed by your backend) when the project asks for the
+ * proof of identity; see `UsePushNotificationsConfig.identityToken`. The client
+ * you pass renews an expired token with its own `identityTokenProvider`.
  *
  * @example
  * const client = useMemo(() => new PushClient({ projectId: 'pk_...' }), [])
@@ -602,25 +636,25 @@ export function usePushNotifications({
 export function usePushIdentity(
   client: PushClient | null,
   userId: string | null,
-  identityHash?: string | null,
+  identityToken?: string | null,
 ): void {
   const prevUserRef = useRef<string | null>(null)
-  const prevHashRef = useRef<string | null>(null)
+  const prevTokenRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (!client) return
 
     const prevId = prevUserRef.current
-    const hash   = identityHash || null
-    const hashChanged = hash !== null && hash !== prevHashRef.current
+    const proof  = identityToken || null
+    const tokenChanged = proof !== null && proof !== prevTokenRef.current
 
-    if (userId && (userId !== prevId || hashChanged)) {
-      withRetry(() => client.devices.identify({ externalId: userId, ...(hash ? { identityHash: hash } : {}) })).catch(() => {})
+    if (userId && (userId !== prevId || tokenChanged)) {
+      withRetry(() => client.devices.identify({ externalId: userId, ...(proof ? { identityToken: proof } : {}) })).catch(() => {})
     } else if (!userId && prevId !== null) {
       client.devices.unregister().catch(() => {})
     }
 
     prevUserRef.current = userId
-    prevHashRef.current = hash
-  }, [userId, identityHash, client])
+    prevTokenRef.current = proof
+  }, [userId, identityToken, client])
 }

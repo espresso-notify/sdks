@@ -167,3 +167,5 @@ describe("validateConsent", () => {
     expect(validateConsent(undefined)).toBeNull();
   });
 });
+
+// feature: privacy.consent

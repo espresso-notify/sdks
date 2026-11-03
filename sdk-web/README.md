@@ -142,15 +142,28 @@ A visitor who denied the permission can only re-enable it in the browser setting
 await push.identify("user_123", { name: "Ana" });
 ```
 
-`externalId` is your own id for the user, the same value you pass to the React Native SDK. Call it after the subscription exists (after `trySubscribe()` or `subscribe()`); it does nothing before. A repeated `subscribe()` never unlinks the user or erases the metadata. `identify` is sent only when the user, the name, the proof, the subscription, the time zone or your `appVersion` changed, or in a new session (see below), so calling it on every page load is cheap.
+`externalId` is your own id for the user, the same value you pass to the React Native SDK. Call it after the subscription exists (after `trySubscribe()` or `subscribe()`); it does nothing before. A repeated `subscribe()` never unlinks the user or erases the metadata. `identify` is sent only when the user, the name, the identity token, the subscription, the time zone or your `appVersion` changed, or in a new session (see below), so calling it on every page load is cheap.
 
-When the project verifies identities, compute `HMAC-SHA256(externalId, project secret)` as lower-case hex **on your server** and pass it:
+When the project verifies identities, your **server** signs a JWT (ES256) for the user, with the key you generated in the dashboard: `sub` is the `externalId`, `aud` is the public id of the project, and the header carries the `kid` of the key. Hand it to the page after the login and pass it as `identityToken`:
 
 ```ts
-await push.identify("user_123", { identityHash: hashFromYourServer });
+await push.identify("user_123", { identityToken: tokenFromYourServer });
 ```
 
-The secret that signs the hash never goes to the browser.
+The private key never goes to the browser. The client keeps the token in memory, per user, and sends it again on the later calls of that user that do not carry one (`getPreferences`, `setPreferences`, `forgetDevice`); it never writes it to `localStorage`, `sessionStorage` or IndexedDB, and `unsubscribe()` and a successful `forgetDevice()` make it forget every token.
+
+A token that has expired makes the API answer 401 `identity_token_expired`. Give the client an `identityTokenProvider` once, and it asks your page for a new token with the `externalId`, keeps it and repeats the call once:
+
+```ts
+const push = new WebPushClient({
+  projectId: "pk_live_xxxxxxxxxxxx",
+  identityTokenProvider: async (externalId) => (await fetch(`/identity-token?user=${encodeURIComponent(externalId)}`)).text(),
+});
+```
+
+Calls of one user that expire together share one provider call. Without a provider, with a provider that throws or returns no text, or when the repeated call fails again, the error reaches your code and nothing else is sent. Any other 401 never calls the provider.
+
+**Breaking:** the option `identityHash` of `identify` and `forgetDevice` is gone, and the API answers 400 `identity_hash_unsupported` to a call that still sends the old field. Replace it with `identityToken` and, to renew an expired one, `identityTokenProvider`.
 
 ## Privacy: consent, preferences and erasure
 
@@ -168,7 +181,7 @@ Without `consent` nothing is recorded and a record stored earlier is kept; the S
 
 ### Preferences
 
-A person can leave a category of notifications without leaving all of them. The preferences belong to the person the browser is linked to by `identify`, so call `identify` first; before it, both calls reject `user_not_found` (404).
+A person can leave a category of notifications without leaving all of them. The preferences belong to the person the browser is linked to by `identify`, so call `identify` first; before it, both calls reject `user_not_found` (404). When the project verifies identities, both calls need the `identityToken` of the user: the one kept from `identify`, or `{ identityToken }` as the last argument.
 
 ```ts
 await push.setPreferences([{ categoryIdentifier: "promotions", optedOut: true }]);
@@ -183,11 +196,11 @@ const current = await push.getPreferences(); // [{ categoryIdentifier: "promotio
 
 ```ts
 await push.forgetDevice();
-// when the project verifies identities, pass the proof computed on your server
-await push.forgetDevice({ identityHash: hashFromYourServer });
+// when the project verifies identities, pass the token your server signed (else the one kept from identify is sent)
+await push.forgetDevice({ identityToken: tokenFromYourServer });
 ```
 
-It erases this browser's subscription, its delivery records, the events stored under it and, when no other device is left, the person (external id and name). The category opt-outs of an erased person stay as a record with no personal data, so a later send still respects them. **It cannot be undone.** Only after the API confirms does it drop the local record and cancel the browser subscription, so a call that fails (no network, a 5xx) keeps everything and the site can try again. It rejects `no_subscription` (`EspressoNotifyError`) without calling the API when the browser has none, and `EspressoNotifyHttpError` for an answer outside 2xx: `not_found` (404) when the project has no such subscription, and 403 `identity_verification_failed` when the project requires the proof of identity and `identityHash` is missing or wrong.
+It erases this browser's subscription, its delivery records, the events stored under it and, when no other device is left, the person (external id and name). The category opt-outs of an erased person stay as a record with no personal data, so a later send still respects them. **It cannot be undone.** Only after the API confirms does it drop the local record and cancel the browser subscription, so a call that fails (no network, a 5xx) keeps everything and the site can try again. It rejects `no_subscription` (`EspressoNotifyError`) without calling the API when the browser has none, and `EspressoNotifyHttpError` for an answer outside 2xx: `not_found` (404) when the project has no such subscription, and 403 `identity_verification_failed` when the project requires the proof of identity and `identityToken` is missing or wrong, and 401 `identity_token_expired` when the token is right but expired and no provider renewed it.
 
 `unsubscribe()` is the lighter call: it removes the subscription and its delivery records and keeps the person and the events. Use `forgetDevice()` when the visitor asks for the data to be deleted.
 
@@ -204,7 +217,7 @@ await push.trackConversion(notificationId); // the visitor did what a notificati
 
 The client does not repeat what the server already knows, and it tries a call again when the failure can pass.
 
-- **Only on change or in a new session.** After a subscription post or an `identify` works, the client remembers a hash of what it sent (the endpoint and keys of the subscription, the VAPID key it was made with, the time zone, the public key of the project, the version of the SDK, your `appVersion` and, for `identify`, the user id, the name and the proof of identity) and the session. It sends the call again only when the hash differs or the remembered call belongs to an earlier session. A skipped `subscribe()` or `trySubscribe()` resolves as if it had worked and reads no VAPID key either, so a rotation of the key is noticed in the next session.
+- **Only on change or in a new session.** After a subscription post or an `identify` works, the client remembers a hash of what it sent (the endpoint and keys of the subscription, the VAPID key it was made with, the time zone, the public key of the project, the version of the SDK, your `appVersion` and, for `identify`, the user id, the name and the identity token) and the session. It sends the call again only when the hash differs or the remembered call belongs to an earlier session. A skipped `subscribe()` or `trySubscribe()` resolves as if it had worked and reads no VAPID key either, so a rotation of the key is noticed in the next session.
 - **A session is one tab.** A reload or another page of your site in the same tab keeps it. A new tab or window starts another, and so does a page opened or shown again 30 minutes or more after it was last seen. Where the browser has no `sessionStorage`, every page load is a session.
 - **Some calls always go out.** A call that carries a `consent` record, and one that finds the endpoint a failed run of the worker left to replace.
 - **Only hashes are stored.** `localStorage` holds the hashes and the ids of the latest 8 sessions of each call (key `espresso-notify:registration:` and the public key of the project); `sessionStorage` holds the id of the session and the time the page was last seen (key `espresso-notify:session`). The endpoint, the keys, the user id, the name and the proof are never stored there. Where a storage cannot be used, the calls go out every time.
@@ -221,6 +234,7 @@ The client does not repeat what the server already knows, and it tries a call ag
 | `swPath` | `string` | Where the worker is served. Default `/push/espressonotify/espresso-notify-sw.js`. |
 | `swScope` | `string` | The scope to register. Default `/push/espressonotify/`. |
 | `appVersion` | `string` | Optional. The version of your site or app; a new value makes the next page load post the subscription and `identify` again. |
+| `identityTokenProvider` | `(externalId: string) => Promise<string>` (type `IdentityTokenProvider`) | Optional. Gives the client a new identity token when the API answers 401 `identity_token_expired`: called once with the `externalId`, then the call is repeated once. See Identify the user. |
 
 ### Methods
 
@@ -233,13 +247,13 @@ The client does not repeat what the server already knows, and it tries a call ag
 | `trySubscribe(options?)` | `Promise<SubscribeResult>` | Subscribes the browser and reports why it could not. `options.consent` (`{ version?, source? }`) records the accept of the visitor; see Consent below. |
 | `subscribe(options?)` | `Promise<boolean>` | Subscribes; `false` when the browser has no service worker, throws on any other failure. Takes the same `options.consent`. |
 | `unsubscribe()` | `Promise<void>` | Removes the subscription from the browser and from the project. |
-| `forgetDevice(options?)` | `Promise<void>` | Erases this browser, its delivery records, its events and its user (when no other device is left) from the project, then drops the local record and the browser subscription. `options`: `identityHash`. Rejects `no_subscription` when the browser has none. Cannot be undone. |
-| `getPreferences()` | `Promise<{ categoryIdentifier, optedOut }[]>` | The category opt-outs of the person this browser is linked to by `identify`. Rejects `user_not_found` (404) before `identify`. |
-| `setPreferences(preferences)` | `Promise<{ updated }>` | Saves 1 to 50 opt-outs (`categoryIdentifier` of 1 to 64 bytes, boolean `optedOut`). The check runs before any call. Needs `identify` first. |
+| `forgetDevice(options?)` | `Promise<void>` | Erases this browser, its delivery records, its events and its user (when no other device is left) from the project, then drops the local record and the browser subscription. `options`: `identityToken`, `externalId` (the user the token renews for). Rejects `no_subscription` when the browser has none. Cannot be undone. |
+| `getPreferences(options?)` | `Promise<{ categoryIdentifier, optedOut }[]>` | The category opt-outs of the person this browser is linked to by `identify`. Rejects `user_not_found` (404) before `identify`. `options`: `identityToken`, `externalId`. |
+| `setPreferences(preferences, options?)` | `Promise<{ updated }>` | Saves 1 to 50 opt-outs (`categoryIdentifier` of 1 to 64 bytes, boolean `optedOut`). The check runs before any call. Needs `identify` first. `options`: `identityToken`, `externalId`. |
 | `trackEvent(name)` | `Promise<void>` | Reports a business event (`order.completed`) of the person this browser is linked to. The name is 1 to 64 letters, digits, `_`, `.`, `:` or `-`; `opened`, `clicked`, `received`, `dismissed`, `converted` and `app_opened` are refused. Silent: never throws, no queue, no retry. Journeys react only when the person also has a mobile device (browser-only: coming soon). |
 | `trackConversion(notificationId)` | `Promise<void>` | Reports the `converted` event of a notification delivered to this browser, counted once per browser. Silent: never throws. |
 | `getSubscription()` | `Promise<PushSubscription \| null>` | The subscription of this browser. Does not prompt. |
-| `identify(externalId, options?)` | `Promise<void>` | Links the browser to a user. `options`: `name`, `identityHash`. |
+| `identify(externalId, options?)` | `Promise<void>` | Links the browser to a user. `options`: `name`, `identityToken`. |
 | `updateMetadata(metadata)` | `Promise<void>` | Stores a metadata object on the subscription. |
 | `onPush(handler)` | `() => void` | Receives the payload of each push while a page is open. Returns the function that stops listening. |
 

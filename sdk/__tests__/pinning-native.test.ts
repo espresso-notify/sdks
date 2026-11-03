@@ -262,7 +262,7 @@ describe('requirePinning follows the pins of the path of the client (SPT-39)', (
     const sdk = load();
     const c = client(sdk);
     await sdk.enableCertificatePinning(PINS);
-    expect(await raised(c.devices.identify({ externalId: 'u1' }))).toBeUndefined();
+    expect(await raised(c.devices.unregister())).toBeUndefined();
     expect(native.request).toHaveBeenCalledTimes(1);
     expect(mockFetch).not.toHaveBeenCalled();
   });
@@ -303,7 +303,7 @@ describe('requirePinning follows the pins of the path of the client (SPT-39)', (
     linked.module = makeNative();
     const sdk = load(lib);
     await sdk.enableCertificatePinning(PINS);
-    expect(await raised(client(sdk, 'js').devices.identify({ externalId: 'u1' }))).toBeUndefined();
+    expect(await raised(client(sdk, 'js').devices.unregister())).toBeUndefined();
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
@@ -313,7 +313,7 @@ describe('requirePinning follows the pins of the path of the client (SPT-39)', (
     const c = client(sdk);
     expect((await raised(c.devices.identify({ externalId: 'u1' })))?.code).toBe('PINNING_NOT_ACTIVE');
     await sdk.enableCertificatePinning(PINS);
-    expect(await raised(c.devices.identify({ externalId: 'u1' }))).toBeUndefined();
+    expect(await raised(c.devices.unregister())).toBeUndefined();
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 });

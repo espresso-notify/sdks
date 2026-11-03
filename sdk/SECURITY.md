@@ -11,7 +11,7 @@ device attestation, certificate pinning), not by hiding code.
 
 By default the package sends its requests through a small native module of its own (`privateTransport: 'auto'`), so that they do not appear in the JavaScript network tools of a development build: Reactotron, the Network panel of React Native DevTools, Rozenite and the Expo Network panel. That is hygiene for your development tools, **not a security boundary**, and nothing in the package relies on it as one. It does not hide the traffic from a proxy (Charles, Proxyman, mitmproxy) or from a native profiler, a release build has none of those JavaScript tools to hide from, and the call of `expo-notifications` to `exp.host` for an Expo push token stays visible (`tokenStrategy: 'device'` avoids it). Where the module is not linked (Expo Go, the web, tests), the package sends through `fetch` and those requests do show in the tools. What protects the integration is still the server and the options you turn on: request signing, device attestation and certificate pinning.
 
-The package also writes nothing sensitive to a log or to an error message: no push token, external id, identity hash, key or payload, and no query string in the path of an HTTP error. The preferences read sends its identifiers in a request body, never in a URL.
+The package also writes nothing sensitive to a log or to an error message: no push token, external id, identity token, key or payload, and no query string in the path of an HTTP error. The preferences read sends its identifiers in a request body, never in a URL.
 
 ## Status
 

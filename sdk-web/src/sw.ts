@@ -139,24 +139,38 @@ self.addEventListener("push", (event) => {
   pushEvent.waitUntil(handlePush(readPayload(pushEvent)));
 });
 
-// A click is the moment the user opened the notification, so the open and the click are
-// reported here and nowhere else: showing a notification is not an open. The backend has no
-// event for a delivery, so nothing is reported when it is shown. Never rejects.
-async function track(notificationId: unknown): Promise<void> {
+// A click is the moment the user opened the notification, so it is reported here and nowhere else: showing a
+// notification is not an open. The backend has no event for a delivery, so nothing is reported when it is shown.
+// One click is one event: a tap on the body is an `opened`, a tap on an action button is a `clicked` that carries
+// the id of the button (`action_id`), never both. Never rejects.
+const ACTION_ID_REFUSED = new RegExp("[\\p{Cc}\\p{Cf}]", "u");
+
+// An id the server would refuse (empty, over 64 characters, a control or format character) is left out and the
+// click still counts.
+function actionIdOf(action: unknown): string | undefined {
+  if (typeof action !== "string" || !action) return undefined;
+  if (Array.from(action).length > 64 || ACTION_ID_REFUSED.test(action)) return undefined;
+  return action;
+}
+
+async function track(notificationId: unknown, action: unknown): Promise<void> {
   if (typeof notificationId !== "number" || !API_URL || API_URL.startsWith("__")) return;
   try {
     const sub = await self.registration.pushManager.getSubscription();
     if (!sub) return;
-    await Promise.all(
-      ["opened", "clicked"].map((eventType) =>
-        fetch(`${API_URL}/v1/notifications/track-web`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ notification_id: notificationId, event_type: eventType, endpoint: sub.endpoint }),
-          keepalive: true,
-        }).catch(() => {}),
-      ),
-    );
+    const button = typeof action === "string" && action !== "";
+    const actionId = button ? actionIdOf(action) : undefined;
+    await fetch(`${API_URL}/v1/notifications/track-web`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        notification_id: notificationId,
+        event_type: button ? "clicked" : "opened",
+        endpoint: sub.endpoint,
+        ...(actionId !== undefined ? { action_id: actionId } : {}),
+      }),
+      keepalive: true,
+    }).catch(() => {});
   } catch {}
 }
 
@@ -233,7 +247,7 @@ self.addEventListener("notificationclick", (event) => {
   // notification is not trusted just because the worker stored it.
   const pressed = buttonTarget(notifEvent.action, actions);
   const target = safeTarget(pressed, self.location.origin) ? pressed : url;
-  notifEvent.waitUntil(Promise.all([track(notificationId), openTarget(target), clearAppBadge()]).then(() => undefined));
+  notifEvent.waitUntil(Promise.all([track(notificationId, notifEvent.action), openTarget(target), clearAppBadge()]).then(() => undefined));
 });
 
 // ---- pushsubscriptionchange ------------------------------------------------------------------------

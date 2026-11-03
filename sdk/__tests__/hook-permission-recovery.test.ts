@@ -122,3 +122,5 @@ it('recovers later when the user grants it in Settings after a denial', async ()
   expect(result.current.permissionStatus).toBe('granted')
   expect(mockRegister).toHaveBeenCalledTimes(1)
 })
+
+// feature: registration.permission-state

@@ -289,3 +289,5 @@ describe('usePushIdentity', () => {
     expect(mockIdentify).not.toHaveBeenCalled()
   })
 })
+
+// feature: registration.initialize

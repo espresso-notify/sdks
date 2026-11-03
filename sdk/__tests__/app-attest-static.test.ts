@@ -102,3 +102,5 @@ it('hashes a challenge with non-ASCII text by its UTF-8 bytes', async () => {
   await p.attest('désafio-ç-€')
   expect(exported.attestKeys).toHaveBeenCalledWith('K', createHash('sha256').update('désafio-ç-€', 'utf8').digest('base64'))
 })
+
+// feature: security.attestation

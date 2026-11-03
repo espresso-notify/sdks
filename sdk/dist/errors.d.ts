@@ -2,10 +2,19 @@
  * Stable error codes the SDK surfaces to the app (for example in the hook's
  * `error`), so callers can branch on `error.code` instead of the message.
  */
-export type EspressoNotifyErrorCode = 'EXPO_PROJECT_ID_MISSING' | 'PUSH_TOKEN_UNAVAILABLE' | 'METADATA_TOO_LARGE' | 'UNSUPPORTED_PLATFORM' | 'PINNING_NOT_ACTIVE' | 'NATIVE_TRANSPORT_UNAVAILABLE';
+export type EspressoNotifyErrorCode = 'EXPO_PROJECT_ID_MISSING' | 'PUSH_TOKEN_UNAVAILABLE' | 'METADATA_TOO_LARGE' | 'UNSUPPORTED_PLATFORM' | 'PINNING_NOT_ACTIVE' | 'NATIVE_TRANSPORT_UNAVAILABLE' | 'SIGNING_FAILED' | 'CONSENT_REQUIRED' | 'SDK_DISABLED';
 export declare class EspressoNotifyError extends Error {
     readonly code: EspressoNotifyErrorCode;
     constructor(code: EspressoNotifyErrorCode, message: string);
+}
+/**
+ * The request could not be signed while request signing is on (the signer or its key is unavailable), so it was not
+ * sent: an unsigned request would be refused by a project that requires signing, and sending it would hide the
+ * failure. A call you made rejects with it (`code` is `SIGNING_FAILED`); an event in the offline queue stays queued and
+ * is tried again later. The text of the signer's own error is never part of the message.
+ */
+export declare class EspressoNotifySigningError extends EspressoNotifyError {
+    constructor(message: string);
 }
 /**
  * A call the server answered with a status outside 2xx. `status` is the HTTP

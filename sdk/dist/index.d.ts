@@ -1,5 +1,5 @@
 import { EspressoNotifyError } from './errors';
-export { EspressoNotifyError, EspressoNotifyHttpError } from './errors';
+export { EspressoNotifyError, EspressoNotifyHttpError, EspressoNotifySigningError } from './errors';
 export type { EspressoNotifyErrorCode } from './errors';
 /**
  * Push notification permission status.
@@ -131,14 +131,22 @@ export interface PushUser {
         name: string;
         externalId: string;
         /**
-         * The proof of identity: HMAC-SHA256(externalId, identity secret of the project)
-         * as lower-case hex, computed by YOUR backend (the secret never goes into the
-         * app). Sent as `identity_hash`. Needed when the project asks for the proof.
+         * The proof of identity: a JWT (ES256) signed by YOUR backend for this user, with the
+         * `externalId` as `sub` and the public id of the project as `aud` (the private key never
+         * goes into the app). Sent as `identity_token`. Needed when the project asks for the proof.
+         * When the server answers that it expired and the client has an `identityTokenProvider`,
+         * the client asks it for a new one and repeats the call once.
          */
-        identityHash?: string;
+        identityToken?: string;
     };
     metadata?: Record<string, unknown>;
 }
+/**
+ * Gives the client a new identity token for a user: your app asks YOUR backend, which signs it. The client calls
+ * it with the `externalId` when the server answers 401 `identity_token_expired`, once per expired call (calls of the
+ * same user that expire together share one call), and repeats the call once with what it returns.
+ */
+export type IdentityTokenProvider = (externalId: string) => Promise<string>;
 /**
  * Transport abstraction — seam for #410 (custom fetch / mock in tests).
  * Default implementation: FetchTransport (fetch + Bearer auth + error wrapping).
@@ -291,6 +299,11 @@ export interface KeyStore {
     getItem(key: string): Promise<string | null>;
     setItem(key: string, value: string): Promise<void>;
     /**
+     * Deletes the value of `key`. Optional: a store without it is wiped by writing an empty text, which every reader of
+     * these keys treats as no value. `wipeLocalData` uses it. @internal
+     */
+    removeItem?(key: string): Promise<void>;
+    /**
      * The storage object this store reads and writes (for example the `expo-secure-store` module). Two `KeyStore` objects
      * over one storage name the same object here, so the SDK knows they hold one device id; without it a store stands for
      * itself. @internal
@@ -302,6 +315,8 @@ export declare class MemoryKeyStore implements KeyStore {
     private readonly _store;
     getItem(key: string): Promise<string | null>;
     setItem(key: string, value: string): Promise<void>;
+    /** @internal */
+    removeItem(key: string): Promise<void>;
 }
 /** ExpoSecureKeyStore — wraps expo-secure-store (optional peer dep). */
 export declare class ExpoSecureKeyStore implements KeyStore {
@@ -309,11 +324,14 @@ export declare class ExpoSecureKeyStore implements KeyStore {
     constructor(secureStore: {
         getItemAsync(key: string): Promise<string | null>;
         setItemAsync(key: string, value: string): Promise<void>;
+        deleteItemAsync?(key: string): Promise<void>;
     });
     /** The `expo-secure-store` module itself: two wrappers of it are one storage. @internal */
     get backing(): object;
     getItem(key: string): Promise<string | null>;
     setItem(key: string, value: string): Promise<void>;
+    /** @internal */
+    removeItem(key: string): Promise<void>;
 }
 /**
  * Signer — wraps react-native-secure-sign for hardware-bound ECDSA-P256 key ops.
@@ -328,6 +346,11 @@ export interface Signer {
     getPublicKey(keyId: string): Promise<string | null>;
     /** Returns true when the device/platform supports hardware key storage. */
     isSupported(): Promise<boolean>;
+    /**
+     * Deletes the key pair identified by keyId. Optional: a signer without it leaves the key in the hardware, and the next
+     * `generate` for the same id replaces it. `wipeLocalData` uses it. @internal
+     */
+    deleteKey?(keyId: string): Promise<void>;
 }
 /**
  * AsyncStorageKeyStore — wraps @react-native-async-storage/async-storage (optional peer dep).
@@ -340,12 +363,35 @@ export declare class AsyncStorageKeyStore implements KeyStore {
     constructor(_storage: {
         getItem(key: string): Promise<string | null>;
         setItem(key: string, value: string): Promise<unknown>;
+        removeItem?(key: string): Promise<unknown>;
     });
     /** The async-storage module itself: two wrappers of it are one storage. @internal */
     get backing(): object;
     getItem(key: string): Promise<string | null>;
     setItem(key: string, value: string): Promise<void>;
+    /** @internal */
+    removeItem(key: string): Promise<void>;
 }
+/**
+ * Every key the SDK writes to the storage of the app. `wipeLocalData` deletes each of them (the test enumerates this
+ * constant, so a key added here without a deletion fails it). A value that ends in `.` is a prefix: the real key
+ * follows it (the offline queue adds the project id, the device id and the chunk number).
+ * @internal
+ */
+export declare const RN_STORAGE_KEYS: {
+    readonly deviceId: "espresso.deviceId";
+    readonly signingPublicKey: "espresso.signingPublicKey";
+    readonly eventQueue: "espresso.eventQueue.";
+    readonly registration: "espresso.registration.";
+    readonly consent: "espresso.consent";
+};
+/**
+ * The key that `wipeLocalData` keeps on purpose: the choice of `disableSDK` holds until `enableSDK`, an erase included
+ * (the iOS and Android SDKs do the same). @internal
+ */
+export declare const RN_KEPT_STORAGE_KEYS: {
+    readonly disabled: "espresso.disabled";
+};
 /**
  * SigningSession — lazy-initialized per-install identity.
  * Generates + persists deviceId and ECDSA-P256 key pair on first use.
@@ -361,6 +407,8 @@ declare class SigningSession {
     ensureInitialized(): Promise<void>;
     get deviceId(): string | null;
     get publicKey(): string | null;
+    /** Forgets the id and the key held in memory, so the next use makes new ones (after `wipeLocalData`). */
+    reset(): void;
 }
 /**
  * Result of a successful native attestation. The discriminator `provider` tells
@@ -562,6 +610,51 @@ type QueueOutcome = {
 /** How the queue judges the failure of one send. @internal */
 export declare function _classifySendError(error: unknown): QueueOutcome;
 /**
+ * How many events the SDK holds while the app has not given consent (`requireConsent`), the oldest dropped first. The
+ * number is `consent.buffer_events` of `sdk-parity/constants.json`, the same as the iOS and Android SDKs.
+ * @internal
+ */
+export declare const CONSENT_BUFFER_EVENTS = 100;
+/**
+ * Whether the client may use the network. Two things close it: `disableSDK` (until `enableSDK`) and, with `requireConsent`,
+ * the lack of consent (until `setConsent(true)`). Both answers are kept in the store and read after the client was made;
+ * `ready` settles when they were. Until then a gate that needs consent is closed, and a request waits for `ready`.
+ * @internal
+ */
+declare class NetworkGate {
+    private readonly _required;
+    private readonly _store;
+    private _consent;
+    private _disabled;
+    private _consentTouched;
+    private _disabledTouched;
+    private _loaded;
+    readonly ready: Promise<void>;
+    private readonly _openListeners;
+    private readonly _disabledListeners;
+    constructor(_required: boolean, _store: KeyStore);
+    /** Reads the answers of an earlier run. A store that fails to answer leaves the gate as it is. */
+    private _restore;
+    /** True once the answers of an earlier run were read (or could not be). */
+    get loaded(): boolean;
+    get required(): boolean;
+    get disabled(): boolean;
+    isOpen(): boolean;
+    /** Calls `listener` every time the gate goes from closed to open. */
+    onOpen(listener: () => void): void;
+    /** Calls `listener` when the SDK is turned off: with `disableSDK`, and when the stored answer says it was. */
+    onDisabled(listener: () => void): void;
+    private _notify;
+    /** Records the answer of the user. Without `requireConsent` there is no gate, and nothing changes. Never throws. */
+    setConsent(granted: boolean): Promise<void>;
+    /** Turns the SDK off, and keeps that across restarts. Never throws. */
+    disable(): Promise<void>;
+    /** Turns the SDK on again. Never throws. */
+    enable(): Promise<void>;
+    /** Back to no consent, after `wipeLocalData`. The choice of `disableSDK` stays. */
+    reset(): void;
+}
+/**
  * The offline queue: sends an event now, keeps it when the send fails for a reason that can pass, and sends it again
  * later. Used by `Devices` for the events it reports (opens, clicks, conversions, custom and lifecycle events).
  * @internal
@@ -571,6 +664,8 @@ declare class EventQueue {
     private readonly _getToken;
     /** `espresso.eventQueue.<projectId>`: the prefix of the key of the queue; the device id of the install follows it. */
     private readonly _storageKey;
+    /** `requireConsent`: while it is closed nothing is sent and the events wait here, at most `CONSENT_BUFFER_EVENTS`. */
+    private readonly _gate;
     /** The queue of this project and device id; null while the id cannot be read (`_attachStore`): memory only until then. */
     private _store;
     private _attaching;
@@ -590,9 +685,18 @@ declare class EventQueue {
     private _destroyed;
     constructor(_request: RequestFn, _getToken: TokenGetter, store: KeyStore, persistent: boolean, 
     /** `espresso.eventQueue.<projectId>`: the prefix of the key of the queue; the device id of the install follows it. */
-    _storageKey: string, maxItems: number);
+    _storageKey: string, maxItems: number, 
+    /** `requireConsent`: while it is closed nothing is sent and the events wait here, at most `CONSENT_BUFFER_EVENTS`. */
+    _gate?: NetworkGate | null);
     /** Sends the event now; keeps it for later when it fails in a way that can pass. Never throws. */
     send(path: string, body: Record<string, unknown>, withEventId: boolean): Promise<void>;
+    /**
+     * Keeps an event until the app gives consent: in memory only, never written, and at most `CONSENT_BUFFER_EVENTS` of
+     * them (the oldest go first). No request is made. Never throws.
+     */
+    private _hold;
+    /** The app gave consent: what waited for it is sent now. Never throws. */
+    release(): Promise<void>;
     /** Keeps an event whose send failed in a way that can pass; `paused`: a Retry-After holds the queue, so no request was made. */
     private _keepRetry;
     /** The time (ms) until which a `Retry-After` holds every request, or 0. */
@@ -613,6 +717,11 @@ declare class EventQueue {
     tokenSet(): void;
     stats(): Promise<OfflineQueueStats>;
     destroy(): void;
+    /**
+     * Drops every event that waits, in memory and in the store, and every wait the server asked for. The next use opens
+     * the queue again under whatever device id the install has by then. Never throws.
+     */
+    wipe(): Promise<void>;
     private _flush;
     private _serial;
     /**
@@ -641,6 +750,13 @@ declare class EventQueue {
 }
 export interface ClientConfig {
     projectId: string;
+    /**
+     * Sends nothing until the app calls `setConsent(true)`. While consent is missing the client makes no request:
+     * the events it would report wait in memory (at most 100, the oldest dropped first) and are sent once consent is
+     * given, and the other calls (`register`, `identify`, ...) reject with `EspressoNotifyError` of code
+     * `CONSENT_REQUIRED`. The answer is kept across restarts. Default: false (no gate).
+     */
+    requireConsent?: boolean;
     pushToken?: string;
     platform?: "ios" | "android";
     /**
@@ -693,6 +809,13 @@ export interface ClientConfig {
     offlineQueue?: OfflineQueueConfig;
     /** @internal Override the store of the offline queue for testing. */
     _queueStore?: KeyStore;
+    /**
+     * Asks your app for a new identity token when the server refuses one as expired (401 `identity_token_expired`).
+     * The client calls it once with the `externalId` of the user, keeps the token it returns in memory, and repeats
+     * the call once. Without it, a call with an expired token fails with that error. A provider that throws, or a
+     * repeated call that fails again, also ends in the error, with no further try. Never called for any other error.
+     */
+    identityTokenProvider?: IdentityTokenProvider;
     /**
      * Optional custom Transport implementation (for testing or alternative HTTP stacks).
      * When not provided, FetchTransport is used.
@@ -811,6 +934,12 @@ export declare class PushClient {
     private readonly _queue;
     /** The batcher of the delivery events; there with the offline queue, which keeps what it cannot send. */
     private readonly _batcher;
+    /** The stores that hold the keys of `RN_STORAGE_KEYS` (the one of request signing, the one of the queue), each once. */
+    private readonly _wipeStores;
+    private _signingSession;
+    private _signer;
+    private readonly _gate;
+    private readonly _gateTransport;
     readonly devices: Devices;
     /** @internal What the hooks sent that worked, by session: they register and identify only on a change or a new session. */
     readonly registration: RegistrationTracker;
@@ -826,6 +955,50 @@ export declare class PushClient {
      * refused by the server for good). Both are 0 when the queue is turned off.
      */
     queueStats(): Promise<OfflineQueueStats>;
+    /**
+     * Deletes everything the SDK keeps on this device, and nothing on the server: the events that wait in the offline
+     * queue, the install id (`espresso.deviceId`), the request signing key, the record of what was registered, the user
+     * and the identity tokens the client holds. The SDK stores no push token, and the one the client holds in memory stays,
+     * so the next `register` needs no new one. It is the local half of `forgetDevice`, which calls it after the server
+     * confirms the erase. Resolves when it is done and never rejects.
+     *
+     * The client stays usable: the next `register` makes a new install id.
+     *
+     * @example
+     * await push.wipeLocalData()
+     */
+    wipeLocalData(): Promise<void>;
+    /**
+     * Tells the client whether the user gave consent. Only matters with `requireConsent`. `true` lets the client make
+     * requests and sends the events that waited; it is kept across restarts. `false` closes the gate again and removes
+     * the kept answer; what is already stored stays until it is sent or erased. Resolves when it is done and never
+     * rejects.
+     *
+     * @example
+     * await push.setConsent(true)
+     */
+    setConsent(granted: boolean): Promise<void>;
+    /**
+     * Turns the SDK off: it makes no request, reports nothing and holds no event, and the events that wait are deleted,
+     * in memory and in the store. The choice is kept and holds after the app restarts, until `enableSDK()`. The calls
+     * that need the server reject with `EspressoNotifyError` of code `SDK_DISABLED`. `wipeLocalData` and `forgetDevice`
+     * leave the choice as it is. Resolves when it is done and never rejects.
+     *
+     * @example
+     * await push.disableSDK()
+     */
+    disableSDK(): Promise<void>;
+    /**
+     * Turns the SDK on after `disableSDK()`: requests go out again, and what the app reports from now on is sent. What was
+     * reported while it was off is gone. With `requireConsent`, consent is still asked for. Resolves when it is done and
+     * never rejects.
+     *
+     * @example
+     * await push.enableSDK()
+     */
+    enableSDK(): Promise<void>;
+    /** The install id and the public key of request signing, in each store, and the signing key in the native signer. */
+    private _eraseKeys;
     /**
      * Calls `handler` once for every tap on a notification, with `{ notificationId, data, url, actionId }`, while the
      * app runs and for the tap that launched it. Returns a function that removes the handler.
@@ -947,7 +1120,47 @@ export declare class Devices {
     private readonly _attestationProvider;
     private readonly _queue;
     private readonly _batcher;
-    constructor(_request: RequestFn, _getToken: TokenGetter, _getPlatform: PlatformGetter, _getProvider: ProviderGetter, _deviceInfo: DeviceInfoAdapter, _displayAdapter: DisplayAdapter, _signingSession?: SigningSession | null, _attestationProvider?: AttestationProvider | null, _queue?: EventQueue | null, _batcher?: TrackBatcher | null);
+    private readonly _identityTokenProvider;
+    /** Where `espresso.deviceId` is kept: register reads (or creates) the install id there when the app passes none. */
+    private readonly _idStore;
+    /** `PushClient.wipeLocalData`: what `forgetDevice` runs once the server no longer holds the device. */
+    private readonly _wipeLocal;
+    /** `requireConsent`: while it is closed the delivery events go to the queue, which holds them, not to the batcher. */
+    private readonly _gate;
+    /** The way a fire-and-forget report leaves (`trackAppOpened`, and the reports with no queue): in the tick of the call. */
+    private readonly _requestFast;
+    constructor(_request: RequestFn, _getToken: TokenGetter, _getPlatform: PlatformGetter, _getProvider: ProviderGetter, _deviceInfo: DeviceInfoAdapter, _displayAdapter: DisplayAdapter, _signingSession?: SigningSession | null, _attestationProvider?: AttestationProvider | null, _queue?: EventQueue | null, _batcher?: TrackBatcher | null, _identityTokenProvider?: IdentityTokenProvider | null, 
+    /** Where `espresso.deviceId` is kept: register reads (or creates) the install id there when the app passes none. */
+    _idStore?: KeyStore | null, 
+    /** `PushClient.wipeLocalData`: what `forgetDevice` runs once the server no longer holds the device. */
+    _wipeLocal?: (() => Promise<void>) | null, 
+    /** `requireConsent`: while it is closed the delivery events go to the queue, which holds them, not to the batcher. */
+    _gate?: {
+        isOpen(): boolean;
+    } | null, 
+    /** The way a fire-and-forget report leaves (`trackAppOpened`, and the reports with no queue): in the tick of the call. */
+    _requestFast?: RequestFn | null);
+    /**
+     * The identity token of each user the app handed over or the provider renewed, by `externalId`. In memory only:
+     * never written to a store, the offline queue or a log. Emptied by `unregister` and `forgetDevice`.
+     */
+    private readonly _identityTokens;
+    /** The provider calls under way, by `externalId`: calls of one user that expire together share one. */
+    private readonly _renewals;
+    /** Changes at every logout, so a renewal that ends after it does not bring a token back. */
+    private _identityEpoch;
+    /**
+     * Runs a call that carries an identity token. The token is the one the app passed, else the one kept for
+     * `externalId`. A 401 `identity_token_expired` with a provider asks it for a new token once and repeats the call
+     * once; any other error, no provider, a provider that fails or a second failure rethrows the error of the call.
+     */
+    private _withIdentityToken;
+    /** One provider call per user at a time; null when it fails, returns no text, or a logout came meanwhile. */
+    private _renewIdentityToken;
+    /** The user and the tokens the client holds, for `wipeLocalData`. @internal */
+    _eraseIdentity(): void;
+    /** The logout: no token of any user stays in the client. */
+    private _forgetIdentityTokens;
     /**
      * Reports a delivery event (opened, clicked, received, dismissed). With the offline queue it goes through the batcher:
      * `opened` and `clicked` at once, `received` and `dismissed` after a random 0 to 30 s, many in one request (track-batch.ts).
@@ -969,6 +1182,8 @@ export declare class Devices {
      * does not pass one.
      */
     private _externalId;
+    /** The `espresso.deviceId` of the install, created once; undefined when the store cannot be read. Never throws. */
+    private _installId;
     /**
      * Registers a device token with the CMS.
      * Call this when your app starts or when the token changes.
@@ -982,9 +1197,15 @@ export declare class Devices {
         externalId: string;
         name?: string;
         metadata?: Record<string, unknown>;
-        /** The proof of identity, as in `PushUser.user.identityHash`. Sent as `identity_hash`. */
-        identityHash?: string;
+        /** The proof of identity, as in `PushUser.user.identityToken`. Sent as `identity_token`. */
+        identityToken?: string;
     }, pushToken?: string): Promise<unknown>;
+    /**
+     * Tells the server who the device belongs to now (`user.identified`): one `identity` lifecycle event with the user
+     * before and after, through the offline queue. A value over 255 bytes is refused by the server, so nothing
+     * is sent for it. Silent — never throws.
+     */
+    private _recordIdentityChange;
     /**
      * Moves the device to anonymous state (user_id = NULL).
      * Call this when the user logs out.
@@ -1048,19 +1269,21 @@ export declare class Devices {
      */
     recordLifecycle(kind: 'permission' | 'subscription' | 'identity', from: string, to: string, externalId?: string, pushToken?: string): Promise<void>;
     /**
-     * Tracks when a user clicks an action button in a push notification.
-     * Call this when handling a specific notification action.
+     * Tracks when a user clicks an action button in a push notification: one `clicked` event, with the id of the
+     * button as `action_id` when you pass `actionId`. With `autoTrack` on, the SDK calls it for the button taps it
+     * sees, so you call it yourself only when you handle the response on your own. An `actionId` the server would
+     * refuse (empty, over 64 characters, a control or format character) is left out and the click still counts.
      * Silent — never throws errors.
      *
      * @example
      * Notifications.addNotificationResponseReceivedListener(response => {
      *   const notifId = response.notification.request.content.data?.notificationId;
      *   if (notifId && response.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) {
-     *     push.devices.trackClick(notifId);
+     *     push.devices.trackClick(notifId, undefined, response.actionIdentifier);
      *   }
      * });
      */
-    trackClick(notificationId: string | number, pushToken?: string): Promise<void>;
+    trackClick(notificationId: string | number, pushToken?: string, actionId?: string): Promise<void>;
     /**
      * Reports a business event of your app ("signed_up", "order.completed") to
      * Espresso Notify. It drives journeys (event triggers, waits and goals) and is
@@ -1089,23 +1312,27 @@ export declare class Devices {
      * call behind a "delete my data" button (LGPD, GDPR). It cannot be undone.
      *
      * Sends the push token of the client (or `pushToken`), plus `deviceId` and
-     * `identityHash` when you pass them. When the project asks for the proof of
-     * identity, `identityHash` is the HMAC of the external id of the user of the
-     * device, computed by your backend. Throws on any answer that is not 2xx
+     * `identityToken` when you pass them. When the project asks for the proof of
+     * identity, `identityToken` is the JWT your backend signed for the user of the
+     * device; without it the client sends the token it kept for that user. The user
+     * is `externalId`, else the last one the client identified (renewing an expired
+     * token needs it, and an app that restarted since the login must pass it). Throws on any answer that is not 2xx
      * (`EspressoNotifyHttpError`, with `status` and `code`), including 404
      * `not_found` when nothing matched, and without a token or a `deviceId`.
      *
-     * After it succeeds the client forgets the user, and the device is unknown to
-     * the server: stop calling the client, or call `register` again for a new
-     * device.
+     * After it succeeds, and also after a 404 (the server no longer knows the device, and the call still throws), the
+     * client runs `wipeLocalData`: it forgets the user, the tokens, the offline queue, the install id and the signing
+     * key. After any other failure it keeps all of that, so the call can be repeated. The device is unknown to the
+     * server: stop calling the client, or call `register` again for a new device.
      *
      * @example
-     * await push.devices.forgetDevice({ identityHash: await myBackend.identityHash(userId) })
+     * await push.devices.forgetDevice({ identityToken: await myBackend.identityToken(userId), externalId: userId })
      */
     forgetDevice(options?: {
         pushToken?: string;
         deviceId?: string;
-        identityHash?: string;
+        identityToken?: string;
+        externalId?: string;
     }): Promise<void>;
     /**
      * Reads the notification preferences of the user of this device: for each
@@ -1114,14 +1341,18 @@ export declare class Devices {
      * device must have been identified (or registered with a user) first.
      *
      * `externalId` is optional: without it the call uses the one of the last
-     * successful `identify` or `register` of this client. Throws when there is no
-     * external id or no push token, and when the call fails.
+     * successful `identify` or `register` of this client. When the project asks
+     * for the proof of identity, the call carries the `identityToken` of
+     * `options`, else the token the client kept for that user. Throws when there
+     * is no external id or no push token, and when the call fails.
      *
      * @example
      * const prefs = await push.devices.getPreferences()
      * const muted = prefs.filter((p) => p.optedOut).map((p) => p.categoryIdentifier)
      */
-    getPreferences(externalId?: string, pushToken?: string): Promise<NotificationPreference[]>;
+    getPreferences(externalId?: string, pushToken?: string, options?: {
+        identityToken?: string;
+    }): Promise<NotificationPreference[]>;
     /**
      * Writes the notification preferences of the user of this device: a category
      * with `optedOut: true` stops receiving sends of that category, and `false`
@@ -1129,12 +1360,14 @@ export declare class Devices {
      * 64 bytes; anything else throws before the call. Resolves with `{ updated }`,
      * the number of preferences written.
      *
-     * `externalId` works as in `getPreferences`.
+     * `externalId` and the identity token of `options` work as in `getPreferences`.
      *
      * @example
      * await push.devices.setPreferences([{ categoryIdentifier: 'promotions', optedOut: true }])
      */
-    setPreferences(preferences: NotificationPreference[], externalId?: string, pushToken?: string): Promise<{
+    setPreferences(preferences: NotificationPreference[], externalId?: string, pushToken?: string, options?: {
+        identityToken?: string;
+    }): Promise<{
         updated: number;
     }>;
     /** The external id and the token a preferences call is for; throws when either is missing. @internal */

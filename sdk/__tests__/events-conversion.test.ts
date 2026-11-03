@@ -199,3 +199,6 @@ describe('the warnings do not repeat the value passed (SPT-54)', () => {
 });
 
 export {};
+
+// feature: tracking.custom-event
+// feature: tracking.conversion

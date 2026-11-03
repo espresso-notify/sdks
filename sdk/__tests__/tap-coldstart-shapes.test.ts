@@ -250,3 +250,5 @@ describe('a launch that is not a tap', () => {
 // A module, not a script: ts-jest type-checks script files in one shared scope, where two of them declaring the same
 // top-level name fail to compile.
 export {};
+
+// feature: tracking.on-opened-callback

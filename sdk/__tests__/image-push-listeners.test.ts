@@ -169,3 +169,5 @@ describe('installListeners: false', () => {
     expect(cb).toHaveBeenCalledTimes(2);
   });
 });
+
+// feature: integration.coexistence

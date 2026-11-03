@@ -264,19 +264,17 @@ describe("notificationclick", () => {
     expect(self.clients.openWindow).toHaveBeenCalledWith(`${ORIGIN}/`);
   });
 
-  it("reports the open and the click once each, with the notification id and the endpoint", async () => {
+  // sdk-parity T28 (PAR-18): a click on the body is one `opened`; the click event is for a button (see sw-tap-semantics.test.ts)
+  it("reports the open once, with the notification id and the endpoint", async () => {
     const { listeners } = loadWorker();
 
     await fireClick(listeners, data).done;
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     const sent = fetchMock.mock.calls.map(([url, init]) => ({ url, method: init.method, body: JSON.parse(init.body) }));
-    expect(sent).toEqual(
-      expect.arrayContaining([
-        { url: `${API_URL}/v1/notifications/track-web`, method: "POST", body: { notification_id: 77, event_type: "opened", endpoint: ENDPOINT } },
-        { url: `${API_URL}/v1/notifications/track-web`, method: "POST", body: { notification_id: 77, event_type: "clicked", endpoint: ENDPOINT } },
-      ]),
-    );
+    expect(sent).toEqual([
+      { url: `${API_URL}/v1/notifications/track-web`, method: "POST", body: { notification_id: 77, event_type: "opened", endpoint: ENDPOINT } },
+    ]);
   });
 
   it("reports nothing when the notification has no id", async () => {
@@ -303,7 +301,7 @@ describe("notificationclick", () => {
     await fireClick(listeners, { url: `${ORIGIN}/sale`, notificationId: 77, apiUrl: "https://attacker.example" }).done;
 
     const urls = fetchMock.mock.calls.map(([url]) => url);
-    expect(urls).toEqual([`${API_URL}/v1/notifications/track-web`, `${API_URL}/v1/notifications/track-web`]);
+    expect(urls).toEqual([`${API_URL}/v1/notifications/track-web`]); // sdk-parity T28: one event per click
   });
 
   it("reports nothing when the worker was never built (placeholder still in place)", async () => {
@@ -524,7 +522,7 @@ describe("action buttons, tag and badge", () => {
       actions: { track: `${ORIGIN}/orders/42`, later: "https://partner.example/later", js: "javascript:alert(1)" },
     };
 
-    it("opens the url of the button and reports the open and the click once each", async () => {
+    it("opens the url of the button and reports one click, with the id of the button, and no open", async () => {
       const { self, listeners } = loadWorker([], API_URL, browser(3));
 
       const { notification, done } = fireClick(listeners, data, "track");
@@ -533,8 +531,8 @@ describe("action buttons, tag and badge", () => {
       expect(notification.close).toHaveBeenCalledTimes(1);
       expect(self.clients.openWindow).toHaveBeenCalledTimes(1);
       expect(self.clients.openWindow).toHaveBeenCalledWith(`${ORIGIN}/orders/42`);
-      const types = fetchMock.mock.calls.map(([, init]) => JSON.parse(init.body).event_type).sort();
-      expect(types).toEqual(["clicked", "opened"]);
+      const bodies = fetchMock.mock.calls.map(([, init]) => JSON.parse(init.body));
+      expect(bodies).toEqual([{ notification_id: 77, event_type: "clicked", endpoint: ENDPOINT, action_id: "track" }]);
     });
 
     it("opens the url of the notification for the body, an unknown button or a button without a url", async () => {
@@ -945,3 +943,44 @@ describe("pushsubscriptionchange", () => {
 function pickConst(source: string, name: string): string | undefined {
   return source.match(new RegExp(`const ${name} = ("[^"]+");`))?.[1];
 }
+
+// feature: registration.token-rotation
+
+// feature: tracking.auto-track
+// feature: tracking.deep-links
+// feature: delivery.action-buttons
+// feature: delivery.rich-image
+// feature: delivery.badge
+// feature: delivery.foreground-presentation
+
+// feature: integration.mode
+// feature: integration.coexistence
+describe("coexistence with another push handler", () => {
+  it("lets a foreign push handler and the Espresso worker both run on the same push", async () => {
+    // A real worker keeps every listener, so this fake keeps a list per event type (the shared loader keeps one).
+    const all: Record<string, Listener[]> = {};
+    const fakeSelf: Record<string, any> = {
+      location: { origin: ORIGIN, hostname: "shop.example" },
+      addEventListener: (type: string, listener: Listener) => {
+        (all[type] ||= []).push(listener);
+      },
+      registration: {
+        showNotification: jest.fn().mockResolvedValue(undefined),
+        pushManager: { getSubscription: jest.fn().mockResolvedValue({ endpoint: ENDPOINT }) },
+      },
+      clients: { matchAll: jest.fn().mockResolvedValue([]), openWindow: jest.fn().mockResolvedValue(null) },
+    };
+    const foreign = jest.fn();
+    fakeSelf.addEventListener("push", foreign);
+    new Function("self", compileWorker(API_URL))(fakeSelf);
+    expect(all.push).toHaveLength(2);
+
+    const event = { data: { json: () => payload }, waitUntil: jest.fn(), stopImmediatePropagation: jest.fn() };
+    for (const listener of all.push) listener(event);
+
+    expect(foreign).toHaveBeenCalledWith(event);
+    expect(event.stopImmediatePropagation).not.toHaveBeenCalled();
+    await event.waitUntil.mock.calls[0][0];
+    expect(fakeSelf.registration.showNotification).toHaveBeenCalledTimes(1);
+  });
+});

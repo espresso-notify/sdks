@@ -11,7 +11,7 @@
 const S = {
   token: 'SENTINEL_TOKEN_7f3a',
   external: 'SENTINEL_EXTERNAL_7f3a',
-  identity: 'SENTINEL_IDENTITYHASH_7f3a',
+  identity: 'SENTINEL_IDENTITYTOKEN_7f3a',
   project: 'pk_live_SENTINEL_PROJECT_7f3a',
   signingKey: 'SENTINEL_SIGNINGKEY_7f3a',
   notification: 7316254,
@@ -23,8 +23,8 @@ const S = {
 /** Every text that must never come out; the notification id as the digits it is written with. */
 const NEEDLES = [S.token, S.external, S.identity, S.project, S.signingKey, String(S.notification), S.event, S.meta, S.device, S.category];
 
-type Mode = 'ok' | 'http500' | 'http403' | 'html502' | 'network' | 'rejectsText' | 'signerDown';
-const MODES: Mode[] = ['ok', 'http500', 'http403', 'html502', 'network', 'rejectsText', 'signerDown'];
+type Mode = 'ok' | 'http500' | 'http403' | 'expired401' | 'html502' | 'network' | 'rejectsText' | 'signerDown';
+const MODES: Mode[] = ['ok', 'http500', 'http403', 'expired401', 'html502', 'network', 'rejectsText', 'signerDown'];
 const CONSOLE_METHODS = ['log', 'info', 'debug', 'warn', 'error', 'trace'] as const;
 
 class MemoryStore {
@@ -102,6 +102,8 @@ function boot(): Harness {
         return answer(500, JSON.stringify({ code: 'server_error' }));
       case 'http403':
         return answer(403, JSON.stringify({ error: 'identity_verification_failed', code: 'identity_verification_failed' }));
+      case 'expired401':
+        return answer(401, JSON.stringify({ error: 'identity_token_expired', code: 'identity_token_expired' }));
       case 'html502':
         return answer(502, '<html>Bad gateway</html>');
       case 'network':
@@ -129,6 +131,8 @@ function boot(): Harness {
       enableAttestation: true,
       _queueStore: new MemoryStore(),
       _keyStore: new MemoryStore(),
+      // Answers with the sentinel, so a log of the renewed token would show.
+      identityTokenProvider: async () => S.identity,
       displayAdapter: {
         onResponse: () => () => {},
         onReceived: () => () => {},
@@ -178,8 +182,8 @@ function expectNoSentinel(h: Harness) {
 
 /** The public calls of the client, each with sentinel values in every argument. */
 const CALLS: [string, (c: any) => Promise<unknown>][] = [
-  ['register', (c) => c.devices.register({ pushToken: S.token, platform: 'ios', deviceId: S.device, user: { name: S.meta, externalId: S.external, identityHash: S.identity }, metadata: { k: S.meta } })],
-  ['identify', (c) => c.devices.identify({ externalId: S.external, name: S.meta, identityHash: S.identity, metadata: { k: S.meta } }, S.token)],
+  ['register', (c) => c.devices.register({ pushToken: S.token, platform: 'ios', deviceId: S.device, user: { name: S.meta, externalId: S.external, identityToken: S.identity }, metadata: { k: S.meta } })],
+  ['identify', (c) => c.devices.identify({ externalId: S.external, name: S.meta, identityToken: S.identity, metadata: { k: S.meta } }, S.token)],
   ['unregister', (c) => c.devices.unregister(S.token)],
   ['updateMetadata', (c) => c.devices.updateMetadata({ k: S.meta }, S.token)],
   [
@@ -210,7 +214,7 @@ const CALLS: [string, (c: any) => Promise<unknown>][] = [
   ['getCategories', (c) => c.devices.registerCategories()],
   ['getPreferences', (c) => c.devices.getPreferences(S.external, S.token)],
   ['setPreferences', (c) => c.devices.setPreferences([{ categoryIdentifier: S.category, optedOut: true }], S.external, S.token)],
-  ['forgetDevice', (c) => c.devices.forgetDevice({ pushToken: S.token, deviceId: S.device, identityHash: S.identity })],
+  ['forgetDevice', (c) => c.devices.forgetDevice({ pushToken: S.token, deviceId: S.device, identityToken: S.identity })],
   [
     'attest',
     async (c) => {

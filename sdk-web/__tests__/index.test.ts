@@ -145,15 +145,15 @@ describe("WebPushClient", () => {
       return JSON.parse(calls[0][1].body);
     }
 
-    it("sends external_id, name and identity_hash exactly as the golden body", async () => {
+    it("sends external_id, name and identity_token exactly as the golden body", async () => {
       const body = await identifyBody((c) =>
-        c.identify(golden.external_id, { name: golden.name, identityHash: golden.identity_hash }),
+        c.identify(golden.external_id, { name: golden.name, identityToken: golden.identity_token }),
       );
       expect(body).toEqual(golden);
       expect(body).not.toHaveProperty("user_id");
     });
 
-    it("omits name and identity_hash when the host does not pass them", async () => {
+    it("omits name and identity_token when the host does not pass them", async () => {
       const body = await identifyBody((c) => c.identify("user-42"));
       expect(body).toEqual({
         endpoint: golden.endpoint,
@@ -511,3 +511,9 @@ describe("state kept for the service worker", () => {
     await expect(client.unsubscribe()).resolves.toBeUndefined();
   });
 });
+
+// feature: registration.initialize
+// feature: registration.token-provider
+
+// feature: metadata.update
+// feature: metadata.timezone

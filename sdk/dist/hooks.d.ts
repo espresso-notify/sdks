@@ -1,5 +1,5 @@
 import { PushClient } from './index';
-import type { PushProvider, PermissionStatus, NotificationOpenedHandler, OfflineQueueConfig, PrivateTransportMode } from './index';
+import type { PushProvider, PermissionStatus, NotificationOpenedHandler, OfflineQueueConfig, PrivateTransportMode, IdentityTokenProvider } from './index';
 export type { PermissionStatus } from './index';
 export interface UsePushNotificationsConfig {
     /** Your project public key (pk_live_...) */
@@ -19,14 +19,20 @@ export interface UsePushNotificationsConfig {
      */
     userName?: string | null;
     /**
-     * The proof of identity of `externalId`: HMAC-SHA256(externalId, identity secret
-     * of the project) as lower-case hex, computed by YOUR backend and handed to the
-     * app after the user logs in (the secret never goes into the app). Sent with
-     * identify() as `identity_hash`. Needed when the project asks for the proof.
-     * When it arrives after `externalId`, the hook identifies again with it; when it
-     * goes away while the user stays, nothing is sent.
+     * The proof of identity of `externalId`: a JWT (ES256) signed by YOUR backend for this user and handed to the
+     * app after the user logs in (the private key never goes into the app). Sent with identify() as `identity_token`
+     * and again with the identify that follows a push token rotation. Needed when the project asks for the proof.
+     * When it arrives after `externalId` or changes, the hook identifies again with it; when it goes away while the
+     * user stays, nothing is sent. Logging out (`externalId` becoming null) makes the client forget it.
      */
-    identityHash?: string | null;
+    identityToken?: string | null;
+    /**
+     * Asks your app for a new identity token when the server answers 401 `identity_token_expired`: the client calls
+     * it with the `externalId`, once, and repeats the call once with what it returns (see
+     * `ClientConfig.identityTokenProvider`). The hook calls the latest function you passed, so it can be an inline
+     * function. Without it, an expired token ends the call with that error.
+     */
+    identityTokenProvider?: IdentityTokenProvider;
     /** Device-level metadata sent on register() (locale, plan, etc.) */
     metadata?: Record<string, unknown>;
     /**
@@ -169,16 +175,17 @@ export interface UsePushNotificationsResult {
  *                             recordLifecycle('subscription'), one rotation after the other
  *   unmount                 → destroy() — cleanup listeners
  */
-export declare function usePushNotifications({ projectId, externalId, userName, identityHash, metadata, pushToken: externalToken, pushTokenProvider: externalTokenProvider, platform: externalPlatform, autoRequestPermission, tokenStrategy, expoProjectId, provider: injectedProvider, enableSigning, enableAttestation, onNotificationOpened, handleDeepLinks, deepLinkAllowList, offlineQueue, privateTransport, }: UsePushNotificationsConfig): UsePushNotificationsResult;
+export declare function usePushNotifications({ projectId, externalId, userName, identityToken, identityTokenProvider, metadata, pushToken: externalToken, pushTokenProvider: externalTokenProvider, platform: externalPlatform, autoRequestPermission, tokenStrategy, expoProjectId, provider: injectedProvider, enableSigning, enableAttestation, onNotificationOpened, handleDeepLinks, deepLinkAllowList, offlineQueue, privateTransport, }: UsePushNotificationsConfig): UsePushNotificationsResult;
 /**
  * Lightweight hook for apps that manage PushClient manually and only want
  * reactive identity management (identify on login, unregister on logout).
  *
- * Pass `identityHash` (computed by your backend) when the project asks for the
- * proof of identity; see `UsePushNotificationsConfig.identityHash`.
+ * Pass `identityToken` (signed by your backend) when the project asks for the
+ * proof of identity; see `UsePushNotificationsConfig.identityToken`. The client
+ * you pass renews an expired token with its own `identityTokenProvider`.
  *
  * @example
  * const client = useMemo(() => new PushClient({ projectId: 'pk_...' }), [])
  * usePushIdentity(client, userId ?? null)
  */
-export declare function usePushIdentity(client: PushClient | null, userId: string | null, identityHash?: string | null): void;
+export declare function usePushIdentity(client: PushClient | null, userId: string | null, identityToken?: string | null): void;

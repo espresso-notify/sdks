@@ -28,6 +28,75 @@ function browserTimeZone() {
         return undefined;
     }
 }
+/** Whether a failed call is the API saying the identity token ran out (401 `identity_token_expired`). */
+function isExpiredIdentityToken(error) {
+    return error instanceof errors_1.EspressoNotifyHttpError && error.status === 401 && error.code === "identity_token_expired";
+}
+/**
+ * The identity tokens of this page, by user, and the one renewal. They live in memory only: never written to the
+ * storage of the page, to IndexedDB or to a log, and gone with the page.
+ */
+class IdentityTokens {
+    constructor(provider) {
+        this.provider = provider;
+        this.tokens = new Map();
+        this.renewals = new Map();
+        // Changes at every forget(), so a renewal that ends after the logout does not bring a token back.
+        this.epoch = 0;
+    }
+    /**
+     * Runs a call that carries an identity token. The token is the one the page passed, else the one kept for
+     * `externalId`. A 401 `identity_token_expired` with a provider asks it for a new token once and repeats the call
+     * once; any other error, no provider, a provider that fails or a second failure rethrows the error of the call.
+     */
+    async run(externalId, explicit, send) {
+        let sent = explicit || undefined;
+        if (sent && externalId)
+            this.tokens.set(externalId, sent);
+        else if (!sent && externalId)
+            sent = this.tokens.get(externalId);
+        try {
+            return await send(sent);
+        }
+        catch (error) {
+            if (!externalId || !this.provider || !isExpiredIdentityToken(error))
+                throw error;
+            // Another call of this user may have renewed the token while this one was on its way.
+            const kept = this.tokens.get(externalId);
+            const fresh = kept && kept !== sent ? kept : await this.renew(externalId);
+            if (!fresh)
+                throw error;
+            return await send(fresh);
+        }
+    }
+    /** The logout: no token of any user stays in the client. */
+    forget() {
+        this.epoch += 1;
+        this.tokens.clear();
+        this.renewals.clear();
+    }
+    // One provider call per user at a time; null when it fails, returns no text, or a logout came meanwhile.
+    renew(externalId) {
+        const running = this.renewals.get(externalId);
+        if (running)
+            return running;
+        const provider = this.provider;
+        const epoch = this.epoch;
+        const renewal = Promise.resolve()
+            .then(() => provider(externalId))
+            .then((token) => {
+            if (typeof token !== "string" || token === "" || epoch !== this.epoch)
+                return null;
+            this.tokens.set(externalId, token);
+            return token;
+        }, () => null)
+            .finally(() => {
+            this.renewals.delete(externalId);
+        });
+        this.renewals.set(externalId, renewal);
+        return renewal;
+    }
+}
 class WebPushClient {
     constructor(options) {
         var _a, _b;
@@ -45,6 +114,7 @@ class WebPushClient {
         this.swPath = (_a = options.swPath) !== null && _a !== void 0 ? _a : swDefaults_1.SW_PATH;
         this.swScope = (_b = options.swScope) !== null && _b !== void 0 ? _b : swDefaults_1.SW_SCOPE;
         this.appVersion = typeof options.appVersion === "string" && options.appVersion ? options.appVersion : undefined;
+        this.identityTokens = new IdentityTokens(typeof options.identityTokenProvider === "function" ? options.identityTokenProvider : undefined);
     }
     // What the browser remembers of the calls that worked (src/registration.ts): the subscription and identify are
     // posted again only when something changed or a new session starts. Made on first use.
@@ -74,6 +144,7 @@ class WebPushClient {
         return {
             "Content-Type": "application/json",
             Authorization: `Bearer ${this.projectId}`,
+            "X-Espresso-SDK": `web/${registration_1.SDK_VERSION}`,
         };
     }
     /** Whether this browser can do Web Push. Same as the exported `isSupported()`. */
@@ -322,17 +393,26 @@ class WebPushClient {
      * the user (the same value you pass to the React Native SDK); the numeric id
      * Espresso Notify keeps internally is never needed.
      *
-     * `identityHash` is HMAC-SHA256(externalId, project secret) as lower-case hex,
-     * computed by YOUR backend. Send it when the project verifies identities.
+     * `identityToken` is a JWT (ES256) signed by YOUR backend for this user. Send it when the project verifies
+     * identities. When the API answers 401 `identity_token_expired` and the client has an `identityTokenProvider`,
+     * the client asks it for a new token once and repeats the call once; the token is kept in memory only.
      */
     async identify(externalId, options = {}) {
         if (!this.subscription)
             return;
-        // The same user, name and proof, on the same subscription, in the same session: the server already has them.
-        const ticket = await this.registrationTracker.plan("identify", Object.assign(Object.assign({}, this.registrationParts(this.subscription)), { userId: externalId, userName: options.name || null, identityHash: options.identityHash || null }));
+        // The same user, name and proof, on the same subscription, in the same session: the server already has them, but the later calls still need the user and the token to carry and renew.
+        const ticket = await this.registrationTracker.plan("identify", Object.assign(Object.assign({}, this.registrationParts(this.subscription)), { userId: externalId, userName: options.name || null, identityToken: options.identityToken || null }));
         if (!ticket)
-            return;
-        await this.postSubscription(Object.assign(Object.assign({ external_id: externalId }, (options.name ? { name: options.name } : {})), (options.identityHash ? { identity_hash: options.identityHash } : {})), "Identify", true);
+            return this.identityTokens.run(externalId, options.identityToken, async () => void (this.identifiedExternalId = externalId));
+        try {
+            await this.identityTokens.run(externalId, options.identityToken, (identityToken) => this.postSubscriptionRaw(Object.assign(Object.assign({ external_id: externalId }, (options.name ? { name: options.name } : {})), (identityToken ? { identity_token: identityToken } : {})), "Identify", true));
+        }
+        catch (err) {
+            if (err instanceof errors_1.EspressoNotifyHttpError)
+                throw new Error(err.message);
+            throw err;
+        }
+        this.identifiedExternalId = externalId;
         await this.registrationTracker.commit(ticket);
     }
     async updateMetadata(metadata) {
@@ -342,22 +422,26 @@ class WebPushClient {
     // every field the request leaves out, so each call only changes what it sends.
     // `retry` tries the call again when the failure can pass (identify); updateMetadata is sent once.
     async postSubscription(extra, action, retry = false) {
-        var _a, _b;
-        if (!this.subscription)
-            return;
-        const sub = this.subscription.toJSON();
         try {
-            await this.request("/v1/web-push/subscribe", {
-                method: "POST",
-                headers: this.headers,
-                body: JSON.stringify(Object.assign({ endpoint: sub.endpoint, p256dh: (_a = sub.keys) === null || _a === void 0 ? void 0 : _a.p256dh, auth: (_b = sub.keys) === null || _b === void 0 ? void 0 : _b.auth, timezone: browserTimeZone() }, extra)),
-            }, (status, body) => { var _a; return (_a = body.error) !== null && _a !== void 0 ? _a : `${action} failed with status ${status}`; }, retry);
+            await this.postSubscriptionRaw(extra, action, retry);
         }
         catch (err) {
             if (err instanceof errors_1.EspressoNotifyHttpError)
                 throw new Error(err.message);
             throw err;
         }
+    }
+    // The same call, rejecting with the EspressoNotifyHttpError of the answer (identify reads its status and code to renew).
+    async postSubscriptionRaw(extra, action, retry = false) {
+        var _a, _b;
+        if (!this.subscription)
+            return;
+        const sub = this.subscription.toJSON();
+        await this.request("/v1/web-push/subscribe", {
+            method: "POST",
+            headers: this.headers,
+            body: JSON.stringify(Object.assign({ endpoint: sub.endpoint, p256dh: (_a = sub.keys) === null || _a === void 0 ? void 0 : _a.p256dh, auth: (_b = sub.keys) === null || _b === void 0 ? void 0 : _b.auth, timezone: browserTimeZone() }, extra)),
+        }, (status, body) => { var _a; return (_a = body.error) !== null && _a !== void 0 ? _a : `${action} failed with status ${status}`; }, retry);
     }
     // One call to the API. An answer outside 2xx rejects with EspressoNotifyHttpError (the message is `describe(status,
     // body)`, the Retry-After of the answer is kept); a request that got no answer rejects with the error the browser
@@ -383,6 +467,9 @@ class WebPushClient {
         }, retry ? {} : { attempts: 1 });
     }
     async unsubscribe() {
+        // The visitor leaves: the page keeps no identity token and no user, whether or not the calls below work.
+        this.identityTokens.forget();
+        this.identifiedExternalId = undefined;
         if (!this.subscription)
             return;
         const endpoint = this.subscription.endpoint;
@@ -403,21 +490,28 @@ class WebPushClient {
      * the record the service worker keeps and cancel the subscription of the browser, so a failed call can be tried
      * again.
      *
-     * When the project asks for the proof of identity, pass `identityHash`: HMAC-SHA256(externalId, project secret)
-     * as lower-case hex, computed by YOUR server. Rejects with `EspressoNotifyError` (`no_subscription`) without
-     * calling the API when the browser has no subscription, and with `EspressoNotifyHttpError` (`status`, `code`)
-     * on any answer outside 2xx, such as 404 `not_found` or 403 `identity_verification_failed`.
+     * When the project asks for the proof of identity, pass `identityToken`: a JWT signed by YOUR server for the user
+     * of this browser (else the client sends the token it kept from `identify`); an expired one is renewed once through
+     * the `identityTokenProvider`, for the user `externalId` or the one of the last `identify`. Rejects with
+     * `EspressoNotifyError` (`no_subscription`) without calling the API when the browser has no subscription, and with
+     * `EspressoNotifyHttpError` (`status`, `code`) on any answer outside 2xx, such as 404 `not_found`, 401
+     * `identity_token_expired` or 403 `identity_verification_failed`. After it succeeds the client forgets every
+     * identity token it kept.
      */
     async forgetDevice(options = {}) {
         const subscription = await this.requireSubscription();
         const path = "/v1/web-push/device";
-        const res = await fetch(`${this.apiUrl}${path}`, {
-            method: "DELETE",
-            headers: this.headers,
-            body: JSON.stringify(Object.assign({ endpoint: subscription.endpoint }, (options.identityHash ? { identity_hash: options.identityHash } : {}))),
+        await this.identityTokens.run(options.externalId || this.identifiedExternalId, options.identityToken, async (identityToken) => {
+            const res = await fetch(`${this.apiUrl}${path}`, {
+                method: "DELETE",
+                headers: this.headers,
+                body: JSON.stringify(Object.assign({ endpoint: subscription.endpoint }, (identityToken ? { identity_token: identityToken } : {}))),
+            });
+            if (!res.ok)
+                throw await this.httpError(res, path, "forgetDevice");
         });
-        if (!res.ok)
-            throw await this.httpError(res, path, "forgetDevice");
+        this.identityTokens.forget();
+        this.identifiedExternalId = undefined;
         await writeState(undefined);
         await this.registrationTracker.forget();
         try {
@@ -431,11 +525,12 @@ class WebPushClient {
     /**
      * Reads the category opt-outs of the person this browser is linked to (`identify`). Rejects
      * `EspressoNotifyHttpError` 404 `user_not_found` when `identify` was never called, and `EspressoNotifyError`
-     * (`no_subscription`) without calling the API when the browser has no subscription.
+     * (`no_subscription`) without calling the API when the browser has no subscription. When the project verifies
+     * identities, the call carries `options.identityToken`, else the token the client kept from `identify`.
      */
-    async getPreferences() {
+    async getPreferences(options = {}) {
         const subscription = await this.requireSubscription();
-        const result = await this.postJson("/v1/web-push/preferences/query", "getPreferences", { endpoint: subscription.endpoint });
+        const result = await this.postWithIdentity(options, "/v1/web-push/preferences/query", "getPreferences", { endpoint: subscription.endpoint });
         if (!Array.isArray(result))
             return [];
         return result.map((p) => {
@@ -452,10 +547,10 @@ class WebPushClient {
      * refuses a category that does not exist (`unknown_category`) or that cannot be left
      * (`category_not_opt_outable`). Resolves `{ updated }`. Needs `identify` first (404 `user_not_found` otherwise).
      */
-    async setPreferences(preferences) {
+    async setPreferences(preferences, options = {}) {
         (0, privacy_1.validatePreferences)(preferences);
         const subscription = await this.requireSubscription();
-        const result = (await this.postJson("/v1/web-push/preferences", "setPreferences", {
+        const result = (await this.postWithIdentity(options, "/v1/web-push/preferences", "setPreferences", {
             endpoint: subscription.endpoint,
             preferences: preferences.map((p) => ({ category_identifier: p.categoryIdentifier, opted_out: p.optedOut })),
         }));
@@ -511,7 +606,7 @@ class WebPushClient {
                 return;
             const res = await fetch(`${this.apiUrl}/v1/notifications/track-web`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: { "Content-Type": "application/json", "X-Espresso-SDK": `web/${registration_1.SDK_VERSION}` },
                 body: JSON.stringify({ notification_id: id, event_type: "converted", endpoint: subscription.endpoint }),
                 keepalive: true,
             });
@@ -540,6 +635,10 @@ class WebPushClient {
         if (!res.ok)
             throw await this.httpError(res, path, action);
         return res.json().catch(() => ({}));
+    }
+    // postJson with the identity token of the call (see IdentityTokens.run): the one passed, else the one kept.
+    postWithIdentity(options, path, action, body) {
+        return this.identityTokens.run(options.externalId || this.identifiedExternalId, options.identityToken, (identityToken) => this.postJson(path, action, identityToken ? Object.assign(Object.assign({}, body), { identity_token: identityToken }) : body));
     }
     // The error of an answer outside 2xx: the status, and the code (else the error) of the JSON body.
     async httpError(res, path, action) {

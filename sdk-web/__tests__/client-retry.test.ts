@@ -257,3 +257,5 @@ describe("the error of the API", () => {
     expect(new EspressoNotifyHttpError("x", 500).retryAfter).toBeUndefined();
   });
 });
+
+// feature: queue.retry

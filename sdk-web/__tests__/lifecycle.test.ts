@@ -148,3 +148,6 @@ describe("a secret key", () => {
     expect(mock).not.toHaveBeenCalled();
   });
 });
+
+// feature: registration.unsubscribe
+// feature: registration.lifecycle-events

@@ -24,7 +24,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.RegistrationTracker = exports.REMEMBERED_SESSIONS = exports.SESSION_GAP_MS = exports.SDK_VERSION = void 0;
 /** The version of this package; `package.json` says the same (a test keeps the two equal). */
-exports.SDK_VERSION = "0.0.3";
+exports.SDK_VERSION = "0.1.0";
 /** How long the page must be out of sight, or the tab untouched, for the next sight of it to start a new session (30 minutes). */
 exports.SESSION_GAP_MS = 30 * 60 * 1000;
 /** How many sessions of one unchanged state are remembered (tabs that took turns); the oldest is forgotten first. */
@@ -158,7 +158,7 @@ class RegistrationTracker {
             (_f = p.timezone) !== null && _f !== void 0 ? _f : "",
             (_g = p.userId) !== null && _g !== void 0 ? _g : "",
             (_h = p.userName) !== null && _h !== void 0 ? _h : "",
-            (_j = p.identityHash) !== null && _j !== void 0 ? _j : "",
+            (_j = p.identityToken) !== null && _j !== void 0 ? _j : "",
         ]));
     }
     /** The record of the storage; anything that is not the expected shape (no value, an older SDK, damage) is empty. */

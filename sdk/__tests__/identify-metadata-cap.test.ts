@@ -17,6 +17,9 @@ function padded(size: number): Record<string, unknown> {
   return { k: 'a'.repeat(size - '{"k":""}'.length) };
 }
 
+// sdk-parity T25: a successful identify of a new user also sends one lifecycle event; this file counts the identify requests.
+const identifyCalls = () => mockFetch.mock.calls.filter(([url]) => String(url).endsWith('/v1/devices/identify'));
+
 describe('identify metadata cap (RNV-16)', () => {
   beforeEach(() => {
     mockFetch.mockReset();
@@ -29,7 +32,7 @@ describe('identify metadata cap (RNV-16)', () => {
 
     await client().devices.identify({ externalId: 'u1', metadata });
 
-    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(identifyCalls()).toHaveLength(1);
   });
 
   it('refuses 4097 bytes with METADATA_TOO_LARGE and makes no request', async () => {
@@ -53,8 +56,10 @@ describe('identify metadata cap (RNV-16)', () => {
 
   it('does nothing about a call without metadata', async () => {
     await client().devices.identify({ externalId: 'u1', name: 'Ana' });
-    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(identifyCalls()).toHaveLength(1);
   });
 });
 
 export {};
+
+// feature: metadata.size-limit

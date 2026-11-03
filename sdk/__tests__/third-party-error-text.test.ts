@@ -47,29 +47,29 @@ describe('a failure of another package is logged as a fixed message with a code 
 
   it('signer: an Error is named by SIGNING_FAILED and its message and extra fields stay out', async () => {
     const nativeError = Object.assign(new Error('SENTINEL_SIGNER_TEXT'), { nativeStackTrace: 'SENTINEL_SIGNER_STACK' });
-    await signingClient(jest.fn().mockRejectedValue(nativeError)).devices.identify({ externalId: 'u1' });
+    await signingClient(jest.fn().mockRejectedValue(nativeError)).devices.unregister().catch(() => undefined); // it rejects with SIGNING_FAILED since sdk-parity T27
 
     expect(warnings()).toHaveLength(1);
     expect(warnings()[0]).toHaveLength(1);
     expect(warnings()[0][0]).toBe(
-      '[espresso-notify] request signing failed (SIGNING_FAILED); sending unsigned (server will reject if require_signing is enabled).',
+      '[espresso-notify] request signing failed (SIGNING_FAILED); the request was not sent.', // sdk-parity T27: it is no longer sent unsigned
     );
     expect(written().join('\n')).not.toMatch(/SENTINEL/);
   });
 
   it('signer: a rejected string is not written either', async () => {
-    await signingClient(jest.fn().mockRejectedValue('SENTINEL_SIGNER_STRING')).devices.identify({ externalId: 'u1' });
+    await signingClient(jest.fn().mockRejectedValue('SENTINEL_SIGNER_STRING')).devices.unregister().catch(() => undefined); // it rejects with SIGNING_FAILED since sdk-parity T27
 
     expect(warnings()).toHaveLength(1);
     expect(String(warnings()[0][0])).toContain('SIGNING_FAILED');
     expect(written().join('\n')).not.toMatch(/SENTINEL/);
   });
 
-  it('signer: the request still goes out unsigned', async () => {
-    await signingClient(jest.fn().mockRejectedValue(new Error('SENTINEL_SIGNER_TEXT'))).devices.identify({ externalId: 'u1' });
+  it('signer: the request is not sent unsigned', async () => {
+    await signingClient(jest.fn().mockRejectedValue(new Error('SENTINEL_SIGNER_TEXT'))).devices.unregister().catch(() => undefined);
 
-    expect(mockFetch).toHaveBeenCalledTimes(1);
-    expect(mockFetch.mock.calls[0][1].headers['X-KM-Signature']).toBeUndefined();
+    // sdk-parity T27 (PAR-20): a request that cannot be signed is not sent unsigned any more
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
   describe('pinning library', () => {

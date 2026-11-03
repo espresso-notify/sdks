@@ -177,3 +177,5 @@ describe("getPreferences", () => {
     expect(mock).not.toHaveBeenCalled();
   });
 });
+
+// feature: metadata.preferences

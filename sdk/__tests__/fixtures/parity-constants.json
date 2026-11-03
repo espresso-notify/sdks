@@ -1,0 +1,137 @@
+{
+  "schema": 1,
+  "constants": {
+    "retry.attempts": {
+      "value": 6,
+      "applies_to": [
+        "rn",
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    "retry_after.cap_seconds": {
+      "value": 3600,
+      "applies_to": [
+        "rn",
+        "ios",
+        "android"
+      ]
+    },
+    "retry_after.cap_seconds_web": {
+      "value": 60,
+      "applies_to": [
+        "web"
+      ],
+      "note": "page lifetime (I5)"
+    },
+    "retry_after.jitter_ratio": {
+      "value": 0.25,
+      "applies_to": [
+        "rn",
+        "ios",
+        "android"
+      ]
+    },
+    "queue.max_events": {
+      "value": 500,
+      "applies_to": [
+        "rn",
+        "ios",
+        "android"
+      ],
+      "exceptions": {
+        "rn": {
+          "value": 200,
+          "gap": "C16"
+        }
+      }
+    },
+    "queue.retention_hours": {
+      "value": 72,
+      "applies_to": [
+        "ios",
+        "android"
+      ]
+    },
+    "batch.max_events": {
+      "value": 20,
+      "applies_to": [
+        "rn",
+        "ios",
+        "android"
+      ]
+    },
+    "batch.window_seconds": {
+      "value": 30,
+      "applies_to": [
+        "rn",
+        "ios",
+        "android"
+      ]
+    },
+    "metadata.max_bytes": {
+      "value": 4096,
+      "applies_to": [
+        "rn",
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    "taps.pending_max": {
+      "value": 5,
+      "applies_to": [
+        "rn",
+        "ios",
+        "android"
+      ],
+      "exceptions": {
+        "rn": {
+          "value": 1,
+          "gap": "C5"
+        }
+      }
+    },
+    "consent.buffer_events": {
+      "value": 100,
+      "applies_to": [
+        "rn",
+        "ios",
+        "android"
+      ]
+    },
+    "action_id.max_length": {
+      "value": 64,
+      "applies_to": [
+        "rn",
+        "web",
+        "ios",
+        "android"
+      ]
+    },
+    "gesture_events": {
+      "value": {
+        "body": "opened",
+        "button": "clicked",
+        "dismiss": "dismissed"
+      },
+      "applies_to": [
+        "rn",
+        "web",
+        "ios",
+        "android"
+      ],
+      "exceptions": {
+        "web": {
+          "value": {
+            "body": "opened",
+            "button": "clicked",
+            "dismiss": null
+          },
+          "gap": "B10"
+        }
+      }
+    }
+  }
+}

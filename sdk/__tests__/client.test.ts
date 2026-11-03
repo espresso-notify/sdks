@@ -469,3 +469,9 @@ describe('Devices.registerCategories', () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 });
+
+// feature: registration.initialize
+
+// feature: metadata.update
+
+// feature: delivery.action-buttons

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.EXPO_PROJECT_ID_MISSING_MESSAGE = exports.EspressoNotifyHttpError = exports.EspressoNotifyError = void 0;
+exports.EXPO_PROJECT_ID_MISSING_MESSAGE = exports.EspressoNotifyHttpError = exports.EspressoNotifySigningError = exports.EspressoNotifyError = void 0;
 class EspressoNotifyError extends Error {
     constructor(code, message) {
         super(message);
@@ -10,6 +10,20 @@ class EspressoNotifyError extends Error {
     }
 }
 exports.EspressoNotifyError = EspressoNotifyError;
+/**
+ * The request could not be signed while request signing is on (the signer or its key is unavailable), so it was not
+ * sent: an unsigned request would be refused by a project that requires signing, and sending it would hide the
+ * failure. A call you made rejects with it (`code` is `SIGNING_FAILED`); an event in the offline queue stays queued and
+ * is tried again later. The text of the signer's own error is never part of the message.
+ */
+class EspressoNotifySigningError extends EspressoNotifyError {
+    constructor(message) {
+        super('SIGNING_FAILED', message);
+        this.name = 'EspressoNotifySigningError';
+        Object.setPrototypeOf(this, EspressoNotifySigningError.prototype);
+    }
+}
+exports.EspressoNotifySigningError = EspressoNotifySigningError;
 /**
  * A call the server answered with a status outside 2xx. `status` is the HTTP
  * status and `code` is the `code` (else the `error`) of the JSON body when it

@@ -267,6 +267,20 @@ describe('the install step', () => {
   });
 });
 
+describe('the Expo flow makes no copy of a file (wizard-backup-folder WB-11)', () => {
+  it('edits app.json and leaves no .bak, no backup folder and no .gitignore behind; the folder holds the same files plus the edit', async () => {
+    const dir = project(expoApp());
+    const before = Object.keys(snapshot(dir)).sort();
+    const r = await run(['setup', '--yes'], dir);
+
+    expect(r.code).toBe(0);
+    expect(Object.keys(snapshot(dir)).sort()).toEqual(before);
+    expect(readdirSync(dir).filter((name) => /\.bak$|espresso-notify-backup/.test(name))).toEqual([]);
+    expect(existsSync(join(dir, '.gitignore'))).toBe(false);
+    expect(r.out).not.toMatch(/\.bak|espresso-notify-backup|\.gitignore|Copy of the original/);
+  });
+});
+
 describe('app.json (exit 0)', () => {
   it('adds the plugin to expo.plugins and keeps everything else', async () => {
     const dir = project(expoApp());
@@ -2160,3 +2174,5 @@ unixOnly('a symbolic link that disappears while `expo install` runs comes back a
     expect(isOneInsertion(ORIGINAL, read(dir, 'shared/app.json'))).toBe(true);
   });
 });
+
+// feature: platform.installer

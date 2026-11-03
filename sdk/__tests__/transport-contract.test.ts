@@ -67,6 +67,8 @@ function fakeModule() {
   return { module, state };
 }
 
+// sdk-parity T64 (PAR-79): every request names the SDK; the version is the one in package.json.
+const PACKAGE_VERSION: string = require('../package.json').version;
 const BASE = 'https://api.example.test';
 
 function nativeDriver(): Driver {
@@ -352,7 +354,7 @@ describe('NativeTransport: what it hands to the module (SPT-15, SPT-16)', () => 
     const { module, state } = fakeModule();
     state.next = () => Promise.resolve({ status: 200, statusText: 'OK', retryAfter: '', body: '{}' });
     await new NativeTransport(BASE, 'pk_live_test', module).request('/v1/x');
-    expect(pairs(sent(module)[2])).toEqual({ Authorization: 'Bearer pk_live_test', 'Content-Type': 'application/json' });
+    expect(pairs(sent(module)[2])).toEqual({ Authorization: 'Bearer pk_live_test', 'Content-Type': 'application/json', 'X-Espresso-SDK': `react-native/${PACKAGE_VERSION}` });
   });
 
   it('a name that repeats with another case is sent once, with the value of the caller', async () => {
@@ -371,7 +373,7 @@ describe('NativeTransport: what it hands to the module (SPT-15, SPT-16)', () => 
     await transport.request('/v1/x', { headers: new Headers({ 'X-Extra': '1' }) });
     await transport.request('/v1/x', { headers: [['X-Extra', '1']] });
     for (const call of (module.request as jest.Mock).mock.calls) {
-      expect(pairs(call[2])).toEqual({ Authorization: 'Bearer pk_live_test', 'Content-Type': 'application/json' });
+      expect(pairs(call[2])).toEqual({ Authorization: 'Bearer pk_live_test', 'Content-Type': 'application/json', 'X-Espresso-SDK': `react-native/${PACKAGE_VERSION}` });
     }
   });
 });
@@ -431,3 +433,5 @@ describe('NativeTransport: concurrent requests (SPT-22)', () => {
     expect(module.request).toHaveBeenCalledTimes(20);
   });
 });
+
+// feature: security.private-transport

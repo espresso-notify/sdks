@@ -1,6 +1,6 @@
 {
   "name": "@espresso-notify/web",
-  "version": "0.0.3",
+  "version": "0.1.0",
   "description": "Web push notifications for websites and PWAs in Chrome, Firefox, Edge and Safari, with VAPID keys, one API and a dashboard.",
   "keywords": [
     "web-push",
@@ -91,6 +91,10 @@
   },
   "jest": {
     "preset": "ts-jest",
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "/__tests__/helpers/"
+    ]
   }
 }

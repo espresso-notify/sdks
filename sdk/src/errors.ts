@@ -9,6 +9,9 @@ export type EspressoNotifyErrorCode =
   | 'UNSUPPORTED_PLATFORM'
   | 'PINNING_NOT_ACTIVE'
   | 'NATIVE_TRANSPORT_UNAVAILABLE'
+  | 'SIGNING_FAILED'
+  | 'CONSENT_REQUIRED'
+  | 'SDK_DISABLED'
 
 export class EspressoNotifyError extends Error {
   readonly code: EspressoNotifyErrorCode
@@ -18,6 +21,20 @@ export class EspressoNotifyError extends Error {
     this.name = 'EspressoNotifyError'
     this.code = code
     Object.setPrototypeOf(this, EspressoNotifyError.prototype)
+  }
+}
+
+/**
+ * The request could not be signed while request signing is on (the signer or its key is unavailable), so it was not
+ * sent: an unsigned request would be refused by a project that requires signing, and sending it would hide the
+ * failure. A call you made rejects with it (`code` is `SIGNING_FAILED`); an event in the offline queue stays queued and
+ * is tried again later. The text of the signer's own error is never part of the message.
+ */
+export class EspressoNotifySigningError extends EspressoNotifyError {
+  constructor(message: string) {
+    super('SIGNING_FAILED', message)
+    this.name = 'EspressoNotifySigningError'
+    Object.setPrototypeOf(this, EspressoNotifySigningError.prototype)
   }
 }
 

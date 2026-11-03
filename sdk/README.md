@@ -67,7 +67,7 @@ The same command sets up an Expo app (Expo SDK 53 or newer) and a React Native C
 npx @espresso-notify/react-native@latest setup
 ```
 
-It runs `npx expo install` for the SDK and the six Expo packages, adds the config plugin to `app.json` or `app.config.json` (it never edits `app.config.js` / `app.config.ts`: when the file does not mention the plugin, and no `app.json` that lists it is spread into it with `...config`, it prints the line, says `1 manual step left` and exits with `2`; when the file mentions the plugin, or spreads the `config` of an `app.json` that lists it, it asks you to check it and exits with `0`, and never says the project is set up), checks `extra.eas.projectId`, refuses a secret key (`sk_`), prints the `usePushNotifications` snippet and the manual checklist (Firebase file and FCM V1 key, APNs key, development build). In a React Native CLI app it installs `@espresso-notify/react-native`, `@react-native-firebase/app`, `@react-native-firebase/messaging` and `react-native-notify-kit` with the package manager of the project (the lock file decides; major 26 of the two Firebase packages for React Native 0.80 or newer, major 25 for 0.79), and adds the Firebase lines to `ios/Podfile` (`use_frameworks! :linkage => :dynamic`), `android/build.gradle` and `android/app/build.gradle` (the `google-services` Gradle plugin) and `AppDelegate.swift` or `.mm` (`FirebaseApp.configure()`, guarded so the app opens before `GoogleService-Info.plist` is in it). Each change sits between `espresso-notify:begin` and `espresso-notify:end` comments, the original is copied next to the file as `<file>.espresso-notify-<timestamp>.bak` first, and a file the wizard does not recognize is left alone with its step printed (exit code `0`). On macOS it asks before it runs `pod install` (`--pods` runs it without asking). It prints what stays yours: the two Firebase files (the Android build fails until `google-services.json` is in place), the Xcode capabilities, the APNs key, the service account, the background handler in `index.js` and the iOS 27 scene life cycle. It was run on 2026-10-23 on apps of the React Native 0.87.1 template (iOS 27 simulator and Android emulator) and of the 0.79.7 template (Android emulator).
+It runs `npx expo install` for the SDK and the six Expo packages, adds the config plugin to `app.json` or `app.config.json` (it never edits `app.config.js` / `app.config.ts`: when the file does not mention the plugin, and no `app.json` that lists it is spread into it with `...config`, it prints the line, says `1 manual step left` and exits with `2`; when the file mentions the plugin, or spreads the `config` of an `app.json` that lists it, it asks you to check it and exits with `0`, and never says the project is set up), checks `extra.eas.projectId`, refuses a secret key (`sk_`), prints the `usePushNotifications` snippet and the manual checklist (Firebase file and FCM V1 key, APNs key, development build). In a React Native CLI app it installs `@espresso-notify/react-native`, `@react-native-firebase/app`, `@react-native-firebase/messaging` and `react-native-notify-kit` with the package manager of the project (the lock file decides; major 26 of the two Firebase packages for React Native 0.80 or newer, major 25 for 0.79), and adds the Firebase lines to `ios/Podfile` (`use_frameworks! :linkage => :dynamic`), `android/build.gradle` and `android/app/build.gradle` (the `google-services` Gradle plugin) and `AppDelegate.swift` or `.mm` (`FirebaseApp.configure()`, guarded so the app opens before `GoogleService-Info.plist` is in it). Each change sits between `espresso-notify:begin` and `espresso-notify:end` comments, the original is not copied when Git holds it (the file is tracked and has no uncommitted change: the wizard prints `git diff HEAD -- <file>` and `git checkout HEAD -- <file>`, which work whether or not you ran `git add`), and is copied to `.espresso-notify-backup/<timestamp>/<path of the file>` in the app folder otherwise, with the `.gitignore` line printed (the wizard never edits `.gitignore`), and a file the wizard does not recognize is left alone with its step printed (exit code `0`). Before it installs anything it warns when the app folder has uncommitted changes in Git and, in a terminal, asks whether to go on (the default is no; `--yes`, no terminal or `CI` on (any value except empty, `0` or `false`) only warns; `ESPRESSO_NO_GIT_STATUS=1` or `EXPO_NO_GIT_STATUS=1` skips the check). On macOS it asks before it runs `pod install` (`--pods` runs it without asking). It prints what stays yours: the two Firebase files (the Android build fails until `google-services.json` is in place), the Xcode capabilities, the APNs key, the service account, the background handler in `index.js` and the iOS 27 scene life cycle. It was run on 2026-10-23 on apps of the React Native 0.87.1 template (iOS 27 simulator and Android emulator) and of the 0.79.7 template (Android emulator).
 
 Flags: `--dry-run` (change nothing), `--yes` (ask nothing, for CI), `--key <pk>` and `--pods`. Exit codes: `0` done or nothing to do, `1` refused, `2` a step failed or a step is left for you. The Expo flow runs the same on Linux, macOS and Windows; the React Native CLI flow was run on macOS only. A second run changes nothing and says so. The manual steps follow.
 
@@ -394,6 +394,7 @@ const client = new PushClient(config: ClientConfig)
 | `provider` | `'expo' \| 'fcm' \| 'apns'` | No | Token provider discriminator. Sent to backend so it routes to the right sender. Set automatically when using `resolvePushProvider()`. |
 | `autoTrack` | `boolean` | No | Auto-track `opened`, `received`, `dismissed`, and `app_opened` events. Default: `true`. |
 | `transport` | `Transport` | No | Custom HTTP transport, used in place of both stacks below. Default: the native module when it is linked, else `FetchTransport` (uses `fetch` with Bearer auth). |
+| `identityTokenProvider` | `(externalId: string) => Promise<string>` | No | Gives the client a new identity token when the server answers 401 `identity_token_expired`: called once per expired call with the user's `externalId`, then the call is repeated once. See [`identify`](#identifyuser-pushtoken). |
 | `privateTransport` | `'auto' \| 'native' \| 'js'` | No | Which stack sends the SDK's requests. `'auto'` (default) uses the native module when it is linked and `fetch` when it is not; `'native'` uses only the module and refuses every call with `NATIVE_TRANSPORT_UNAVAILABLE`, sending nothing, when it cannot; `'js'` always uses `fetch`. A `transport` of your own wins over all three. See [Private transport](#private-transport). |
 | `displayAdapter` | `DisplayAdapter` | No | Custom display adapter. Default: auto-selected (Expo or bare, based on available libraries). |
 | `deviceInfo` | `DeviceInfoAdapter` | No | Custom device info adapter. Default: `ExpoDeviceInfo` (reads from `expo-device/application/localization`). |
@@ -439,7 +440,7 @@ await client.devices.register({
   user: {                                 // optional immediate user linking
     externalId: 'user_123',
     name: 'João',
-    identityHash: '…',                    // optional proof of identity (see identify)
+    identityToken: '…',                   // optional proof of identity (see identify)
   },
 })
 ```
@@ -455,11 +456,24 @@ await client.devices.identify({
   externalId: 'user_123', // required
   name: 'João',           // optional
   metadata: { plan: 'premium', role: 'admin' },
-  identityHash: '…',      // optional: the proof of identity, computed by YOUR backend
+  identityToken: '…',     // optional: the proof of identity, signed by YOUR backend
 })
 ```
 
-`identityHash` is the HMAC-SHA256 of the `externalId`, keyed by the identity secret of the project, in lower-case hex. Your backend computes it after the login and hands it to the app; the secret never goes into the app. A project in the `required` identity mode refuses (403 `identity_verification_failed`) a `register` with a user, an `identify` and a `forgetDevice` that carry no right proof. `metadata` is capped at 4096 bytes serialized: a larger one throws `EspressoNotifyError` with the code `METADATA_TOO_LARGE`, and the server answers 400 `metadata_too_large`.
+`identityToken` is a JWT (ES256) that YOUR backend signs for this user: `sub` is the `externalId`, `aud` is the public id of the project, with `iat` and `exp`, and the `kid` of the key you generated in the dashboard in the header. The private key never goes into the app: your backend signs the token after the login and hands it to the app. A project in the `optional` or `required` identity mode checks it on a `register` with a user, an `identify`, a `forgetDevice`, a `getPreferences` and a `setPreferences`; in `required` a call with no right token is refused (403 `identity_verification_failed`). The client keeps the token in memory, per user, and sends it again on the calls of that user that do not carry one; logging out (`unregister`) and `forgetDevice` make it forget every token.
+
+When the server answers 401 `identity_token_expired`, the client calls your `identityTokenProvider` once, keeps the token it returns and repeats the call once. Without a provider, with a provider that throws or returns no text, or when the repeated call fails again, the error reaches your code (`EspressoNotifyHttpError`, with `status` and `code`), and nothing else is sent. Calls of one user that expire together share one provider call. Any other 401 never calls the provider.
+
+```ts
+const client = new PushClient({
+  projectId: 'pk_live_...',
+  identityTokenProvider: async (externalId) => myBackend.identityToken(externalId), // your own call
+})
+```
+
+**Breaking:** the option `identityHash` of `register`, `identify`, `forgetDevice` and `usePushNotifications` is gone, and the server answers 400 `identity_hash_unsupported` to a call that still sends the old field. Replace it with `identityToken` (a JWT signed by your backend) and, to renew an expired one, `identityTokenProvider`.
+
+`metadata` is capped at 4096 bytes serialized: a larger one throws `EspressoNotifyError` with the code `METADATA_TOO_LARGE`, and the server answers 400 `metadata_too_large`.
 
 #### `unregister(pushToken?)`
 
@@ -478,7 +492,7 @@ Updates device-level metadata (tags, preferences, etc.).
 await client.devices.updateMetadata({ theme: 'dark', tags: ['sports'] })
 ```
 
-#### `getPreferences(externalId?, pushToken?)` and `setPreferences(preferences, externalId?, pushToken?)`
+#### `getPreferences(externalId?, pushToken?, options?)` and `setPreferences(preferences, externalId?, pushToken?, options?)`
 
 Read and write the per-category opt-outs of the user of the device. The device must be identified first; without `externalId` the calls use the one of the last `identify` of the client.
 
@@ -487,16 +501,28 @@ const prefs = await client.devices.getPreferences() // [{ categoryIdentifier, op
 await client.devices.setPreferences([{ categoryIdentifier: 'promotions', optedOut: true }])
 ```
 
-`getPreferences` calls `POST /v1/preferences/query` and sends the external id and the push token in the JSON body, never in the URL (an older SDK called `GET /v1/preferences`, which no longer exists and answers 404: update the SDK). `setPreferences` takes 1 to 50 preferences, each `categoryIdentifier` 1 to 64 bytes, and throws before the call otherwise. Both throw on a failed call.
+When the project verifies identities, pass `options.identityToken` (else the client sends the token it kept for that user): `await client.devices.getPreferences(undefined, undefined, { identityToken })`. `getPreferences` calls `POST /v1/preferences/query` and sends the external id and the push token in the JSON body, never in the URL (an older SDK called `GET /v1/preferences`, which no longer exists and answers 404: update the SDK). `setPreferences` takes 1 to 50 preferences, each `categoryIdentifier` 1 to 64 bytes, and throws before the call otherwise. Both throw on a failed call.
 
 #### `forgetDevice(options?)`
 
-Erases the device and its data from Espresso Notify, for good (LGPD, GDPR). Sends the push token of the client unless `options.pushToken` is given, plus `options.deviceId` and `options.identityHash` when present. Throws on any answer that is not 2xx, including 404 `not_found`.
+Erases the device and its data from Espresso Notify, for good (LGPD, GDPR). Sends the push token of the client unless `options.pushToken` is given, plus `options.deviceId` and `options.identityToken` when present (else the token the client kept for the user). The user is `options.externalId`, else the one of the last `identify`: pass it when the app restarted since the login, so an expired token can be renewed. After it succeeds, and after a 404, the client runs `wipeLocalData`; after a 403, a 5xx or a network failure nothing is deleted on the device, so the call can be repeated. Throws on any answer that is not 2xx, including 404 `not_found`.
 
 ```ts
-await client.devices.forgetDevice({ identityHash })
+await client.devices.forgetDevice({ identityToken, externalId: userId })
 client.destroy() // the device no longer exists
 ```
+
+#### `wipeLocalData()`
+
+Deletes what the SDK keeps on the device and calls no server: the events of the offline queue, the install id, the request signing key, the record of what the hook registered, and the user and identity tokens the client holds. Resolves when done and never rejects. `forgetDevice` calls it after the server confirms the erase.
+
+#### `requireConsent` and `setConsent(granted)`
+
+With `new PushClient({ requireConsent: true })` the client makes no request until the app calls `await client.setConsent(true)`. The events it would report wait in memory, at most 100 (the oldest dropped first) and are never written to the storage of the app; the other calls reject with `EspressoNotifyError` of code `CONSENT_REQUIRED`. `setConsent(true)` sends what waited and is kept across restarts; `setConsent(false)` closes the gate again. The hook does not take the option.
+
+#### `disableSDK()` and `enableSDK()`
+
+`await client.disableSDK()` turns the SDK off for a user who opts out of data collection: no request, no report, the events that wait in the offline queue are deleted, and the calls that need the server reject with `EspressoNotifyError` of code `SDK_DISABLED`. The choice is kept across restarts until `await client.enableSDK()`. `wipeLocalData` and `forgetDevice` leave it as it is, and `enableSDK` does not give consent again.
 
 #### `registerCategories()`
 
@@ -589,7 +615,8 @@ import { usePushNotifications } from '@espresso-notify/react-native/hooks'
 | `projectId` | `string` | required | Public project key (`pk_live_...`). |
 | `externalId` | `string \| null` | `null` | Current user's external ID. Hook calls `identify()` on set and `unregister()` on clear. |
 | `userName` | `string \| null` | `null` | User display name. Passed to `identify()` automatically. |
-| `identityHash` | `string \| null` | `null` | Proof of identity of `externalId` (HMAC computed by your backend), sent with `identify()` as `identity_hash`. A hash that arrives later makes the hook identify again. |
+| `identityToken` | `string \| null` | `null` | Proof of identity of `externalId` (a JWT signed by your backend), sent with `identify()` as `identity_token` and again with the identify that follows a push token rotation. A token that arrives later, or a new one, makes the hook identify again. **Breaking:** replaces `identityHash`. |
+| `identityTokenProvider` | `(externalId: string) => Promise<string>` | — | Asks your app for a new token when the server answers 401 `identity_token_expired`; the call is repeated once. The hook calls the latest function you passed. |
 | `metadata` | `Record<string, unknown>` | — | Device metadata sent on `register()`. |
 | `pushToken` | `string` | — | Explicit push token. Skip token acquisition if provided. |
 | `pushTokenProvider` | `'expo' \| 'fcm' \| 'apns'` | `'expo'` | Provider discriminator when supplying `pushToken` explicitly. |
@@ -605,6 +632,8 @@ import { usePushNotifications } from '@espresso-notify/react-native/hooks'
 | `offlineQueue` | `{ enabled?: boolean; maxItems?: number }` | `{ enabled: true, maxItems: 200 }` | Keep the events that fail and send them again. |
 | `privateTransport` | `'auto' \| 'native' \| 'js'` | `'auto'` | Which stack sends the requests of the client the hook creates, as the option of `PushClient` does. An invalid value becomes the `error` of the hook. See [Private transport](#private-transport). |
 | `enableAttestation` | `boolean` | `false` | Run `client.devices.attest()` after `register()` and before `isReady` turns `true`. Requires `enableSigning: true` (the hook warns once if it is missing). A failed attestation never sets `error`. |
+
+When the project verifies identities, pass `identityToken` (a JWT your backend signed for `externalId`) and `identityTokenProvider`. The hook identifies with the token, sends it again with the identify that follows a push token rotation (the token the provider last returned, once it renewed one), and, when the server answers 401 `identity_token_expired`, asks your function for a new one and repeats the call once. A new `identityToken` for the same user identifies again; logging out (`externalId` becoming `null`) makes the client forget the token.
 
 **Result (`UsePushNotificationsResult`):**
 
@@ -629,7 +658,7 @@ import { usePushNotifications } from '@espresso-notify/react-native/hooks'
 
 A call the server refuses throws an `EspressoNotifyHttpError` (a subclass of `Error`) with `status` (the HTTP status), `code` (the `code` of the JSON body, such as `identity_verification_failed` or `user_not_found`) and `path` (the path of the call, up to any `?` or `#`, so it holds no query string).
 
-The SDK writes nothing to the console but warnings, in fixed texts that start with `[espresso-notify]`. No warning carries a push token, an external id, an identity hash, a key or a payload, the two warnings about a rejected event name or notification id do not repeat the value, and there is no debug or verbose option. The warning of a failed signing, pinning start or attestation adds the message of the error that the other package raised; the SDK does not control that text.
+The SDK writes nothing to the console but warnings, in fixed texts that start with `[espresso-notify]`. No warning carries a push token, an external id, an identity token, a key or a payload, the two warnings about a rejected event name or notification id do not repeat the value, and there is no debug or verbose option. The warning of a failed signing, pinning start or attestation adds the message of the error that the other package raised; the SDK does not control that text.
 
 If the first permission answer is not `granted` (or the user later enables notifications in Settings), the hook re-reads the permission when the app returns to the foreground and registers as soon as it is `granted`.
 
@@ -652,7 +681,7 @@ function App() {
 ```
 
 ```ts
-usePushIdentity(client: PushClient | null, userId: string | null, identityHash?: string | null): void
+usePushIdentity(client: PushClient | null, userId: string | null, identityToken?: string | null): void
 ```
 
 ---

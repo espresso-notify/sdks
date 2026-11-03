@@ -2,6 +2,7 @@
  * @jest-environment jsdom
  *
  * Tests for #811: received / dismissed / app_opened instrumentation.
+ * feature: tracking.sessions
  * Covers:
  *   - ExpoDisplayAdapter.onReceived (wired through PushClient auto-track)
  *   - BareDisplayAdapter.onReceived / onDismissed
@@ -602,3 +603,8 @@ describe('PushClient.destroy() cleans up all subscriptions', () => {
 // Torna o arquivo um módulo: sem isso o ts-jest o trata como script global e
 // nomes de topo repetidos entre testes colidem (TS2451) em cache frio.
 export {}
+
+// feature: tracking.auto-track
+// feature: tracking.received
+// feature: tracking.dismissed
+// feature: tracking.app-opened

@@ -73,7 +73,7 @@ function runOnce(client, kind, parts, call) {
  *                             recordLifecycle('subscription'), one rotation after the other
  *   unmount                 → destroy() — cleanup listeners
  */
-function usePushNotifications({ projectId, externalId = null, userName = null, identityHash = null, metadata, pushToken: externalToken, pushTokenProvider: externalTokenProvider, platform: externalPlatform, autoRequestPermission = true, tokenStrategy = 'expo', expoProjectId, provider: injectedProvider, enableSigning = false, enableAttestation = false, onNotificationOpened, handleDeepLinks, deepLinkAllowList, offlineQueue, privateTransport = 'auto', }) {
+function usePushNotifications({ projectId, externalId = null, userName = null, identityToken = null, identityTokenProvider, metadata, pushToken: externalToken, pushTokenProvider: externalTokenProvider, platform: externalPlatform, autoRequestPermission = true, tokenStrategy = 'expo', expoProjectId, provider: injectedProvider, enableSigning = false, enableAttestation = false, onNotificationOpened, handleDeepLinks, deepLinkAllowList, offlineQueue, privateTransport = 'auto', }) {
     const [pushToken, setPushToken] = (0, react_1.useState)(externalToken !== null && externalToken !== void 0 ? externalToken : null);
     const [isReady, setIsReady] = (0, react_1.useState)(false);
     const [error, setError] = (0, react_1.useState)(null);
@@ -84,13 +84,23 @@ function usePushNotifications({ projectId, externalId = null, userName = null, i
     onOpenedRef.current = onNotificationOpened;
     const prevUserRef = (0, react_1.useRef)(null);
     const prevUserNameRef = (0, react_1.useRef)(null);
-    const prevHashRef = (0, react_1.useRef)(null);
+    const prevTokenRef = (0, react_1.useRef)(null);
     const providerRef = (0, react_1.useRef)(null);
     const permStatusRef = (0, react_1.useRef)(null);
     // The latest identity and metadata of the component: a token rotation registers the new token with these, not with
     // the ones the hook started with.
-    const latestRef = (0, react_1.useRef)({ externalId, userName, identityHash, metadata });
-    latestRef.current = { externalId, userName, identityHash, metadata };
+    const latestRef = (0, react_1.useRef)({ externalId, userName, identityToken, metadata });
+    latestRef.current = { externalId, userName, identityToken, metadata };
+    // The latest identityTokenProvider of the component: the client asks for a new token through this ref.
+    const tokenProviderRef = (0, react_1.useRef)(identityTokenProvider);
+    tokenProviderRef.current = identityTokenProvider;
+    // The token the provider last returned, with the token of the props it replaced: a later identify (a rotation, a
+    // return to the foreground) sends it instead of the expired one, while the app still passes that same prop.
+    const renewedRef = (0, react_1.useRef)(null);
+    const tokenOf = (id, passed) => {
+        const renewed = renewedRef.current;
+        return renewed && renewed.externalId === id && renewed.replaced === passed ? renewed.token : passed;
+    };
     // The end of the token rotations under way: each one registers and identifies the new token before the next starts,
     // and an identity change waits for it (the server refuses to identify a token it has not registered yet).
     const rotationRef = (0, react_1.useRef)(null);
@@ -171,7 +181,18 @@ function usePushNotifications({ projectId, externalId = null, userName = null, i
                         'attestation is bound to the signing key. Set enableSigning: true.');
                 }
                 const client = new index_1.PushClient(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ projectId, pushToken: token, platform, provider: resolvedProvider, enableSigning,
-                    enableAttestation }, (handleDeepLinks !== undefined ? { handleDeepLinks } : {})), (deepLinkAllowList !== undefined ? { deepLinkAllowList } : {})), (offlineQueue !== undefined ? { offlineQueue } : {})), { privateTransport }), (onOpenedRef.current ? { onNotificationOpened: (event) => { var _a; return (_a = onOpenedRef.current) === null || _a === void 0 ? void 0 : _a.call(onOpenedRef, event); } } : {})));
+                    enableAttestation }, (handleDeepLinks !== undefined ? { handleDeepLinks } : {})), (deepLinkAllowList !== undefined ? { deepLinkAllowList } : {})), (offlineQueue !== undefined ? { offlineQueue } : {})), { privateTransport, 
+                    // Asks the latest provider of the component and remembers what it returned (see renewedRef).
+                    identityTokenProvider: (id) => __awaiter(this, void 0, void 0, function* () {
+                        const provide = tokenProviderRef.current;
+                        if (!provide)
+                            throw new Error('no identityTokenProvider');
+                        const token = yield provide(id);
+                        if (typeof token === 'string' && token) {
+                            renewedRef.current = { externalId: id, replaced: latestRef.current.identityToken || null, token };
+                        }
+                        return token;
+                    }) }), (onOpenedRef.current ? { onNotificationOpened: (event) => { var _a; return (_a = onOpenedRef.current) === null || _a === void 0 ? void 0 : _a.call(onOpenedRef, event); } } : {})));
                 clientRef.current = client;
                 providerRef.current = activeProvider;
                 const stopped = { isCancelled: () => cancelled };
@@ -201,7 +222,8 @@ function usePushNotifications({ projectId, externalId = null, userName = null, i
                         const step = () => __awaiter(this, void 0, void 0, function* () {
                             if (cancelled)
                                 return;
-                            const { externalId: id, userName: name, identityHash: hash, metadata: meta } = latestRef.current;
+                            const { externalId: id, userName: name, identityToken: passed, metadata: meta } = latestRef.current;
+                            const proof = id ? tokenOf(id, passed || null) : null;
                             let registered = true;
                             try {
                                 yield runOnce(client, 'register', { token: newToken, userId: id }, () => (0, retry_1.withRetry)(() => client.devices.register({ metadata: meta, pushToken: newToken, provider: newProvider }), stopped));
@@ -217,7 +239,7 @@ function usePushNotifications({ projectId, externalId = null, userName = null, i
                             client.provider = newProvider;
                             if (registered && id) {
                                 try {
-                                    yield runOnce(client, 'identify', { token: newToken, userId: id, userName: name, identityHash: hash }, () => (0, retry_1.withRetry)(() => client.devices.identify(Object.assign(Object.assign({ externalId: id }, (name ? { name } : {})), (hash ? { identityHash: hash } : {})), newToken), stopped));
+                                    yield runOnce(client, 'identify', { token: newToken, userId: id, userName: name, identityToken: proof }, () => (0, retry_1.withRetry)(() => client.devices.identify(Object.assign(Object.assign({ externalId: id }, (name ? { name } : {})), (proof ? { identityToken: proof } : {})), newToken), stopped));
                                 }
                                 catch ( /* the next identity change or rotation tries again */_b) { /* the next identity change or rotation tries again */ }
                                 if (cancelled)
@@ -280,7 +302,8 @@ function usePushNotifications({ projectId, externalId = null, userName = null, i
                             yield pending;
                         if (cancelled)
                             return;
-                        const { externalId: id, userName: name, identityHash: hash, metadata: meta } = latestRef.current;
+                        const { externalId: id, userName: name, identityToken: passed, metadata: meta } = latestRef.current;
+                        const proof = id ? tokenOf(id, passed || null) : null;
                         const current = (_b = (_a = client.pushToken) !== null && _a !== void 0 ? _a : token) !== null && _b !== void 0 ? _b : '';
                         try {
                             yield runOnce(client, 'register', { token: current, userId: id }, () => (0, retry_1.withRetry)(() => client.devices.register({ metadata: meta }), stopped));
@@ -291,7 +314,7 @@ function usePushNotifications({ projectId, externalId = null, userName = null, i
                         if (!id || cancelled)
                             return;
                         try {
-                            yield runOnce(client, 'identify', { token: current, userId: id, userName: name, identityHash: hash }, () => (0, retry_1.withRetry)(() => client.devices.identify(Object.assign(Object.assign({ externalId: id }, (name ? { name } : {})), (hash ? { identityHash: hash } : {})), current), stopped));
+                            yield runOnce(client, 'identify', { token: current, userId: id, userName: name, identityToken: proof }, () => (0, retry_1.withRetry)(() => client.devices.identify(Object.assign(Object.assign({ externalId: id }, (name ? { name } : {})), (proof ? { identityToken: proof } : {})), current), stopped));
                         }
                         catch ( /* the next foreground tries again */_d) { /* the next foreground tries again */ }
                     }
@@ -331,29 +354,33 @@ function usePushNotifications({ projectId, externalId = null, userName = null, i
         const token = pushToken !== null && pushToken !== void 0 ? pushToken : undefined;
         const prevId = prevUserRef.current;
         const prevName = prevUserNameRef.current;
-        const hash = identityHash || null;
-        // A new hash for the same user (it arrived late, or was renewed) is sent; a hash that goes away is not.
-        const hashChanged = hash !== null && hash !== prevHashRef.current;
+        const passed = identityToken || null;
+        // A new token for the same user (it arrived late, or the app renewed it) is sent; a token that goes away is not.
+        const tokenChanged = passed !== null && passed !== prevTokenRef.current;
+        const proof = externalId ? tokenOf(externalId, passed) : null;
         // A token rotation under way registers the new token first; what the identity asks for waits for it.
         const send = (call) => {
             const pending = rotationRef.current;
             (pending ? pending.then(call) : call()).catch(() => { });
         };
-        if (externalId && (externalId !== prevId || userName !== prevName || hashChanged)) {
+        if (externalId && (externalId !== prevId || userName !== prevName || tokenChanged)) {
             // Only when the server may not have this user in this session (registration.ts); a failed call is not remembered.
             send(() => {
                 var _a, _b;
-                return runOnce(client, 'identify', { token: (_b = (_a = client.pushToken) !== null && _a !== void 0 ? _a : token) !== null && _b !== void 0 ? _b : '', userId: externalId, userName, identityHash: hash }, () => (0, retry_1.withRetry)(() => client.devices.identify(Object.assign(Object.assign({ externalId }, (userName ? { name: userName } : {})), (hash ? { identityHash: hash } : {})), token), { isCancelled: () => unmountedRef.current }));
+                return runOnce(client, 'identify', { token: (_b = (_a = client.pushToken) !== null && _a !== void 0 ? _a : token) !== null && _b !== void 0 ? _b : '', userId: externalId, userName, identityToken: proof }, () => (0, retry_1.withRetry)(() => client.devices.identify(Object.assign(Object.assign({ externalId }, (userName ? { name: userName } : {})), (proof ? { identityToken: proof } : {})), token), { isCancelled: () => unmountedRef.current }));
             });
         }
         else if (!externalId && prevId !== null) {
             // The device is anonymous again: the next login must identify, even as the same user in this session.
             send(() => client.devices.unregister(token).then((result) => __awaiter(this, void 0, void 0, function* () { var _a; yield ((_a = client.registration) === null || _a === void 0 ? void 0 : _a.forget('identify')); return result; })));
         }
+        // The user logged out: the token the provider returned for him is not kept.
+        if (!externalId)
+            renewedRef.current = null;
         prevUserRef.current = externalId;
         prevUserNameRef.current = userName !== null && userName !== void 0 ? userName : null;
-        prevHashRef.current = hash;
-    }, [externalId, userName, identityHash, isReady]); // eslint-disable-line react-hooks/exhaustive-deps
+        prevTokenRef.current = passed;
+    }, [externalId, userName, identityToken, isReady]); // eslint-disable-line react-hooks/exhaustive-deps
     // ── AppState permission re-check (#807) ──────────────────────────────────────
     // Only fires on foreground transitions; never duplicates the app_opened logic
     // in PushClient._setupAutoTracking().
@@ -425,29 +452,30 @@ function usePushNotifications({ projectId, externalId = null, userName = null, i
  * Lightweight hook for apps that manage PushClient manually and only want
  * reactive identity management (identify on login, unregister on logout).
  *
- * Pass `identityHash` (computed by your backend) when the project asks for the
- * proof of identity; see `UsePushNotificationsConfig.identityHash`.
+ * Pass `identityToken` (signed by your backend) when the project asks for the
+ * proof of identity; see `UsePushNotificationsConfig.identityToken`. The client
+ * you pass renews an expired token with its own `identityTokenProvider`.
  *
  * @example
  * const client = useMemo(() => new PushClient({ projectId: 'pk_...' }), [])
  * usePushIdentity(client, userId ?? null)
  */
-function usePushIdentity(client, userId, identityHash) {
+function usePushIdentity(client, userId, identityToken) {
     const prevUserRef = (0, react_1.useRef)(null);
-    const prevHashRef = (0, react_1.useRef)(null);
+    const prevTokenRef = (0, react_1.useRef)(null);
     (0, react_1.useEffect)(() => {
         if (!client)
             return;
         const prevId = prevUserRef.current;
-        const hash = identityHash || null;
-        const hashChanged = hash !== null && hash !== prevHashRef.current;
-        if (userId && (userId !== prevId || hashChanged)) {
-            (0, retry_1.withRetry)(() => client.devices.identify(Object.assign({ externalId: userId }, (hash ? { identityHash: hash } : {})))).catch(() => { });
+        const proof = identityToken || null;
+        const tokenChanged = proof !== null && proof !== prevTokenRef.current;
+        if (userId && (userId !== prevId || tokenChanged)) {
+            (0, retry_1.withRetry)(() => client.devices.identify(Object.assign({ externalId: userId }, (proof ? { identityToken: proof } : {})))).catch(() => { });
         }
         else if (!userId && prevId !== null) {
             client.devices.unregister().catch(() => { });
         }
         prevUserRef.current = userId;
-        prevHashRef.current = hash;
-    }, [userId, identityHash, client]);
+        prevTokenRef.current = proof;
+    }, [userId, identityToken, client]);
 }

@@ -14,7 +14,7 @@ import { addedLines, FIXTURE_ROOT, fixture, onlyAddsLines, TEMPLATE_VERSIONS } f
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { gradleProject, gradleApp, GOOGLE_SERVICES_VERSION } = require('../bin/lib/patchers/gradle.js');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { applyPatch } = require('../bin/lib/patch.js');
+const { applyPatch, createBackupSession } = require('../bin/lib/patch.js');
 
 const CLASSPATH = `classpath("com.google.gms:google-services:${GOOGLE_SERVICES_VERSION}")`;
 const APPLY = "apply plugin: 'com.google.gms.google-services'";
@@ -204,9 +204,10 @@ describe('gradle patchers through applyPatch on a copy of the template', () => {
       cpSync(join(FIXTURE_ROOT, version, rel), join(dir, rel));
     }
     const now = new Date(2026, 9, 23, 10, 0, 0);
+    const backup = createBackupSession({ root: dir, now });
     const run = () => [
-      applyPatch({ file: join(dir, rels[0]), patcher: gradleProject, context: { file: join(dir, rels[0]) }, now }),
-      applyPatch({ file: join(dir, rels[1]), patcher: gradleApp, context: { file: join(dir, rels[1]) }, now }),
+      applyPatch({ file: join(dir, rels[0]), patcher: gradleProject, context: { file: join(dir, rels[0]) }, backup }),
+      applyPatch({ file: join(dir, rels[1]), patcher: gradleApp, context: { file: join(dir, rels[1]) }, backup }),
     ];
     const first = run();
     expect(first.map((r) => r.status)).toEqual(['patched', 'patched']);
@@ -217,7 +218,13 @@ describe('gradle patchers through applyPatch on a copy of the template', () => {
     const second = run();
     expect(second.map((r) => r.status)).toEqual(['already', 'already']);
     expect(rels.map((rel) => readFileSync(join(dir, rel), 'utf8'))).toEqual(afterFirst);
-    expect(readdirSync(join(dir, 'android')).filter((n) => n.endsWith('.bak'))).toHaveLength(1);
-    expect(readdirSync(join(dir, 'android/app')).filter((n) => n.endsWith('.bak'))).toHaveLength(1);
+    // one copy of each file, in the one backup folder, and none next to the file; the second run made no second folder
+    const folder = join(dir, '.espresso-notify-backup');
+    expect(readdirSync(folder)).toHaveLength(1);
+    const stamped = join(folder, readdirSync(folder)[0]);
+    expect(readdirSync(join(stamped, 'android'))).toEqual(['app', 'build.gradle']);
+    expect(readdirSync(join(stamped, 'android/app'))).toEqual(['build.gradle']);
+    expect(readdirSync(join(dir, 'android')).sort()).toEqual(['app', 'build.gradle']);
+    expect(readdirSync(join(dir, 'android/app'))).toEqual(['build.gradle']);
   });
 });

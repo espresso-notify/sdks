@@ -208,3 +208,5 @@ describe('the bytes of the device id and of the nonce', () => {
 // A module, not a script: ts-jest type-checks script files in one shared scope, where two of them declaring the same
 // top-level name fail to compile.
 export {};
+
+// feature: security.secure-storage

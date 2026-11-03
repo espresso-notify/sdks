@@ -48,6 +48,8 @@ export interface TrackedEvent {
     notification_id: number;
     event: string;
     push_token: string;
+    /** The button of a `clicked`: it goes in the batch member and in the single body. */
+    action_id?: string;
 }
 /** What the batcher needs from the client; the offline queue provides most of it. */
 export interface BatchHost {

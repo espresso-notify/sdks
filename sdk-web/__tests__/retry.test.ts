@@ -186,3 +186,6 @@ describe("withRetry", () => {
     expect(fn).toHaveBeenCalledTimes(3);
   });
 });
+
+// feature: queue.retry
+// feature: queue.typed-http-error

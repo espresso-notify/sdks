@@ -44,6 +44,8 @@ export interface TrackedEvent {
   notification_id: number
   event: string
   push_token: string
+  /** The button of a `clicked`: it goes in the batch member and in the single body. */
+  action_id?: string
 }
 
 /** What the batcher needs from the client; the offline queue provides most of it. */
@@ -192,7 +194,7 @@ export class TrackBatcher {
       return
     }
     const token = chunk[0].push_token
-    const body = JSON.stringify({ push_token: token, events: chunk.map((e) => ({ notification_id: e.notification_id, event: e.event })) })
+    const body = JSON.stringify({ push_token: token, events: chunk.map((e) => ({ notification_id: e.notification_id, event: e.event, ...(e.action_id ? { action_id: e.action_id } : {}) })) })
     let answer: unknown
     try {
       answer = await this._host.request(BATCH_PATH, { method: 'POST', body })

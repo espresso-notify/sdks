@@ -179,15 +179,15 @@ describe("identify", () => {
     expect(posts().filter((p) => p.external_id)).toHaveLength(1);
   });
 
-  it("sends at once when the user, the name or the proof of identity changed", async () => {
+  it("sends at once when the user, the name or the identity token changed", async () => {
     const client = await subscribedPage();
-    await client.identify("user-1", { name: "Maria", identityHash: "aa" });
-    await client.identify("user-1", { name: "Maria", identityHash: "aa" });
-    await client.identify("user-2", { name: "Maria", identityHash: "aa" });
-    await client.identify("user-2", { name: "Maria B", identityHash: "aa" });
-    await client.identify("user-2", { name: "Maria B", identityHash: "bb" });
+    await client.identify("user-1", { name: "Maria", identityToken: "aa" });
+    await client.identify("user-1", { name: "Maria", identityToken: "aa" });
+    await client.identify("user-2", { name: "Maria", identityToken: "aa" });
+    await client.identify("user-2", { name: "Maria B", identityToken: "aa" });
+    await client.identify("user-2", { name: "Maria B", identityToken: "bb" });
 
-    expect(posts().filter((p) => p.external_id).map((p) => [p.external_id, p.name, p.identity_hash])).toEqual([
+    expect(posts().filter((p) => p.external_id).map((p) => [p.external_id, p.name, p.identity_token])).toEqual([
       ["user-1", "Maria", "aa"],
       ["user-2", "Maria", "aa"],
       ["user-2", "Maria B", "aa"],
@@ -231,19 +231,19 @@ describe("identify", () => {
     expect(calls(SUBSCRIBE)).toHaveLength(0);
   });
 
-  it("is not skipped for the proof of identity that a new login hands over (the hash is part of the state)", async () => {
+  it("is not skipped for the proof of identity that a new login hands over (the token is part of the state)", async () => {
     const client = await subscribedPage();
-    await client.identify("user-1", { identityHash: "first" });
-    await client.identify("user-1", { identityHash: "second" });
+    await client.identify("user-1", { identityToken: "first" });
+    await client.identify("user-1", { identityToken: "second" });
     expect(posts().filter((p) => p.external_id)).toHaveLength(2);
   });
 });
 
 describe("what the browser keeps", () => {
-  it("is a hash and a session id: no endpoint, key, user id, name or proof in either storage", async () => {
+  it("is a hash and a session id: no endpoint, key, user id, name or identity token in either storage", async () => {
     const client = loadPage({ appVersion: "3.1.4" });
     await client.subscribe({ consent: { version: "terms-1", source: "banner" } });
-    await client.identify("user-secret-42", { name: "Maria Silva", identityHash: "ab".repeat(32) });
+    await client.identify("user-secret-42", { name: "Maria Silva", identityToken: "ab".repeat(32) });
 
     const everything = [...local.written, ...session.written, ...local.data.values(), ...session.data.values()].join("\n");
     expect(local.data.size).toBe(1);
@@ -296,3 +296,5 @@ describe("what the browser keeps", () => {
     expect(SDK_VERSION).toBe(require("../package.json").version);
   });
 });
+
+// feature: registration.register

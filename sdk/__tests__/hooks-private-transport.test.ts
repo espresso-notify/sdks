@@ -92,3 +92,5 @@ describe('the privateTransport option of the hook (SPT-08)', () => {
     expect(mockFetch).not.toHaveBeenCalled()
   })
 })
+
+// feature: security.private-transport

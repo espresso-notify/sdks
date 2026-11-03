@@ -175,7 +175,7 @@ class TrackBatcher {
                 return;
             }
             const token = chunk[0].push_token;
-            const body = JSON.stringify({ push_token: token, events: chunk.map((e) => ({ notification_id: e.notification_id, event: e.event })) });
+            const body = JSON.stringify({ push_token: token, events: chunk.map((e) => (Object.assign({ notification_id: e.notification_id, event: e.event }, (e.action_id ? { action_id: e.action_id } : {})))) });
             let answer;
             try {
                 answer = yield this._host.request(exports.BATCH_PATH, { method: 'POST', body });

@@ -202,3 +202,5 @@ describe('disableCertificatePinning()', () => {
 // Torna o arquivo um módulo: sem isso o ts-jest o trata como script global e
 // nomes de topo repetidos entre testes colidem (TS2451) em cache frio.
 export {}
+
+// feature: security.pinning

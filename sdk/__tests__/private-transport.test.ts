@@ -110,7 +110,7 @@ describe('the transport a client uses (SPT-01 to SPT-05, SPT-09)', () => {
   it.each(ROWS)('%s', async (_name, env, expected) => {
     const { make, nativeRequest, customRequest } = load(env);
     const client = make();
-    const err = await raised(client.devices.identify({ externalId: 'u1' }));
+    const err = await raised(client.devices.unregister());
 
     expect(client.transportKind).toBe(expected.kind);
     expect(nativeRequest).toHaveBeenCalledTimes(expected.native);

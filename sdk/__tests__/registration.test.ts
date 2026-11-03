@@ -74,10 +74,10 @@ describe('a change of what is sent', () => {
 
   it('identify also notices a new name or a new proof of identity', async () => {
     const { tracker } = make()
-    await run(tracker, 'identify', { ...base, userName: 'Ana', identityHash: 'a'.repeat(64) })
-    expect(await tracker.plan('identify', { ...base, userName: 'Ana', identityHash: 'a'.repeat(64) })).toBeNull()
-    expect(await tracker.plan('identify', { ...base, userName: 'Ana B', identityHash: 'a'.repeat(64) })).not.toBeNull()
-    expect(await tracker.plan('identify', { ...base, userName: 'Ana', identityHash: 'b'.repeat(64) })).not.toBeNull()
+    await run(tracker, 'identify', { ...base, userName: 'Ana', identityToken: 'a'.repeat(64) })
+    expect(await tracker.plan('identify', { ...base, userName: 'Ana', identityToken: 'a'.repeat(64) })).toBeNull()
+    expect(await tracker.plan('identify', { ...base, userName: 'Ana B', identityToken: 'a'.repeat(64) })).not.toBeNull()
+    expect(await tracker.plan('identify', { ...base, userName: 'Ana', identityToken: 'b'.repeat(64) })).not.toBeNull()
   })
 
   it('takes the app version from the getter when the parts do not carry one', async () => {
@@ -204,8 +204,8 @@ describe('a call that fails', () => {
 describe('what is on disk', () => {
   it('holds hashes and a session id, never the token or the user id', async () => {
     const { tracker, store } = make()
-    await run(tracker, 'register', { ...base, userName: 'Ana Secret', identityHash: 'f'.repeat(64) })
-    await run(tracker, 'identify', { ...base, userName: 'Ana Secret', identityHash: 'f'.repeat(64) })
+    await run(tracker, 'register', { ...base, userName: 'Ana Secret', identityToken: 'f'.repeat(64) })
+    await run(tracker, 'identify', { ...base, userName: 'Ana Secret', identityToken: 'f'.repeat(64) })
     const text = store.text()
     expect(text).not.toContain('abc-secret')
     expect(text).not.toContain('user-secret-7')
@@ -310,3 +310,6 @@ describe('two calls at once', () => {
     expect(Object.keys(stored).sort()).toEqual(['identify', 'register', 'v'])
   })
 })
+
+// feature: registration.register
+// feature: registration.dedupe

@@ -6,8 +6,10 @@
  *   1. look at the project: React Native version (0.79 or newer), package manager, the native folders
  *   2. install `@espresso-notify/react-native`, `@react-native-firebase/app`, `@react-native-firebase/messaging` and
  *      `react-native-notify-kit` with the package manager of the project, the Firebase major chosen by the version table
- *   3. change the native files that fit in text (Podfile, the two Gradle files, the AppDelegate), each between markers,
- *      with a copy next to it; what the wizard does not recognize is left alone and its step is printed
+ *   3. change the native files that fit in text (Podfile, the two Gradle files, the AppDelegate), each between markers;
+ *      a file that git holds (tracked, no uncommitted change) gets no copy, the others are copied into one folder,
+ *      `.espresso-notify-backup/<date>/`, and the line for `.gitignore` is printed (the wizard never edits it); what the
+ *      wizard does not recognize is left alone and its step is printed
  *   4. `pod install` (`bundle exec pod install` with a Gemfile), on macOS only, and only if you say yes or give `--pods`
  *   5. print the `usePushNotifications` snippet, filled with the public key when one is given (never written to disk)
  *   6. print what the wizard cannot do (the Firebase files, Xcode, the APNs key, the service account, `index.js`, iOS 27)
@@ -15,16 +17,17 @@
  * Exit codes: 0 done, nothing to do, or only steps left for you; 1 refused (not a React Native project, React Native below
  * 0.79 or unreadable, a secret key, or a no at the confirmation); 2 the install, a write or `pod install` failed.
  *
- * Everything that touches the world comes in `io` (folder, `spawn`, streams, `platform`, `env`, optionally `fs`, `path` and
- * `now`), like the Expo flow, so the tests can fake it. No command line holds anything from the project: only constants and
- * the versions of the table, and `spawn` runs without a shell.
+ * Everything that touches the world comes in `io` (folder, `spawn`, `spawnSync` for the questions to git, streams, `platform`,
+ * `env`, optionally `fs`, `path` and `now`), like the Expo flow, so the tests can fake it. No command line holds anything
+ * from the project: only constants and the versions of the table, and `spawn` and `spawnSync` run without a shell.
  */
 
 const nodeFs = require('node:fs');
 const nodePath = require('node:path');
 
 const { detectProject } = require('./project.js');
-const { applyPatch } = require('./patch.js');
+const { applyPatch, createBackupSession, BACKUP_DIR } = require('./patch.js');
+const { createGitCheck, hasUncommittedChanges } = require('./git.js');
 const { podfile, MANUAL_STEP: PODFILE_STEP } = require('./patchers/podfile.js');
 const { gradleProject, gradleApp, GOOGLE_SERVICES_VERSION } = require('./patchers/gradle.js');
 const { appDelegate } = require('./patchers/appDelegate.js');
@@ -69,6 +72,41 @@ function declaredMajor(cwd, name, range, fsm, pathm) {
   return match ? { major: parseInt(match[1], 10), version: String(range).trim() } : null;
 }
 
+/** A character that ends a line or controls a terminal: a path with one is never put in a printed command. */
+const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
+
+/** `*`, `?`, `[` and `\`: git reads them in a pathspec (`git checkout HEAD -- 'a*b'` restores every file that matches), on every platform. */
+const GIT_GLOB = /[*?[\\]/;
+
+/** In a path for Windows: a character that `cmd.exe` or PowerShell reads as more than a name, in or out of quotes. */
+const WINDOWS_UNSAFE = /[&|<>^()$`"'%!;\u2018\u2019\u201a\u201b\u201c\u201d\u201e]/;
+
+/**
+ * A path as a person pastes it into a command, or `null` when no command is printed for it.
+ *   - only letters, digits and `_ + = : . / -` : unchanged (nothing in it means something to a shell);
+ *   - a control character or a line break: `null` (the line would break, or the terminal would obey it);
+ *   - `*`, `?`, `[` or `\`: `null` on every platform (git would read them as a pattern and the command could touch other files);
+ *   - POSIX: in single quotes, where a shell expands nothing (a `'` inside becomes `'\''`);
+ *   - Windows: `cmd.exe` and PowerShell quote in different ways, so a name with any character that either one reads
+ *     (& | < > ^ ( ) $ ` " ' % ! ; the backtick, or a curly quote) gets `null`, and every other name goes in double quotes, which
+ *     are safe in both.
+ */
+function shellPath(rel, platform) {
+  if (CONTROL.test(rel) || GIT_GLOB.test(rel)) return null;
+  if (/^[\w+=:./-]+$/.test(rel)) return rel;
+  if (platform === 'win32') return WINDOWS_UNSAFE.test(rel) ? null : `"${rel}"`;
+  return `'${rel.replace(/'/g, "'\\''")}'`;
+}
+
+/** A name for a message: a control character shown as `?`. */
+const printable = (text) => text.replace(new RegExp(CONTROL.source, 'g'), '?');
+
+/** True for `1` and `true`, the values of the switches `ESPRESSO_NO_GIT_STATUS` and `EXPO_NO_GIT_STATUS`. */
+const isOn = (value) => ['1', 'true'].includes(String(value === undefined ? '' : value).trim().toLowerCase());
+
+/** `CI` is on for any value but empty, `0` or `false` (as the CI services set it: `true`, `1`, `yes`, a name). */
+const isCi = (value) => !['', '0', 'false'].includes(String(value === undefined || value === null ? '' : value).trim().toLowerCase());
+
 /** The native files the wizard edits, in order. `step` is the instruction printed when the wizard leaves the file alone. */
 const NATIVE_FILES = [
   { key: 'podfile', platform: 'ios', fallback: 'ios/Podfile', patcher: podfile, step: () => PODFILE_STEP },
@@ -104,7 +142,7 @@ const NATIVE_FILES = [
 /**
  * Runs the flow.
  * @param {{ dryRun: boolean, yes: boolean, key?: string, pods?: boolean }} options
- * @param {{ cwd: string, spawn: Function, stdout: {write: Function}, stderr: {write: Function}, stdin: object, isTTY: boolean, platform: string, env?: object, fs?: object, path?: object, now?: Function }} io
+ * @param {{ cwd: string, spawn: Function, spawnSync?: Function, stdout: {write: Function}, stderr: {write: Function}, stdin: object, isTTY: boolean, platform: string, env?: object, fs?: object, path?: object, now?: Function }} io
  * @param {{ makePrompter: Function, Stop: Function, installEnvironment: Function, keyProblem: Function, hookSnippet: Function, PLACEHOLDER_KEY: string, BARE_GUIDE: string }} helpers from `bin/setup.js`
  * @returns {Promise<number>} the exit code
  */
@@ -116,7 +154,7 @@ async function runBare(options, io, helpers) {
   const pathm = io.path || nodePath;
   const interactive = io.isTTY && !options.yes && !options.dryRun;
   const prompter = interactive ? makePrompter(io.stdin, io.stdout) : null;
-  const state = { changed: false, failed: false, manual: [], backups: [] };
+  const state = { changed: false, failed: false, manual: [], backups: [], inGit: [] };
   const display = (file, fallback) => (file ? pathm.relative(io.cwd, file).split(pathm.sep).join('/') : fallback);
   const isFile = (file) => {
     try {
@@ -143,20 +181,22 @@ async function runBare(options, io, helpers) {
     if (!rn) {
       const range = (project.packageJson.devDependencies || {})['react-native'] || (project.packageJson.dependencies || {})['react-native'];
       err(
-        `[espresso-notify] Could not tell the React Native version from "${range}". Run your package manager's install so that react-native is ` +
+        `[espresso-notify] Could not tell the React Native version from "${printable(String(range))}". Run your package manager's install so that react-native is ` +
         'in node_modules (or write an exact version in package.json), then run the wizard again.',
       );
       throw new Stop(1);
     }
+    // A version read from the project is text of the project: it reaches the terminal as `rnVersion`, never raw.
+    const rnVersion = printable(String(rn.version));
     const firebaseMajor = firebaseMajorFor(rn);
     if (firebaseMajor === null) {
       err(
-        `[espresso-notify] This project is on React Native ${rn.version}. The SDK needs React Native 0.${MIN_REACT_NATIVE_MINOR} or newer. ` +
+        `[espresso-notify] This project is on React Native ${rnVersion}. The SDK needs React Native 0.${MIN_REACT_NATIVE_MINOR} or newer. ` +
         'Upgrade first (https://reactnative.dev/docs/upgrading), then run the wizard again.',
       );
       throw new Stop(1);
     }
-    out(`      React Native CLI project, React Native ${rn.version}${rn.source === 'installed' ? ' (installed)' : ' (from package.json)'}, ${project.packageManager}.`);
+    out(`      React Native CLI project, React Native ${rnVersion}${rn.source === 'installed' ? ' (installed)' : ' (from package.json)'}, ${project.packageManager}.`);
     for (const warning of project.warnings) out(`      ${warning}`);
     if (!project.hasIos) out('      There is no ios/ folder: the iOS steps are printed for you.');
     if (!project.hasAndroid) out('      There is no android/ folder: the Android steps are printed for you.');
@@ -169,6 +209,37 @@ async function runBare(options, io, helpers) {
       }
     }
 
+    // What the wizard will edit. Git is asked once, at the first file to change; the copies of one run share one folder.
+    const context = { appName: project.appName, reactNative: rn, googleServicesVersion: GOOGLE_SERVICES_VERSION };
+    const environment = installEnvironment(io.platform, io.env);
+    const gitHolds = createGitCheck({ cwd: io.cwd, spawnSync: io.spawnSync, environment, pathApi: pathm });
+    const backup = createBackupSession({ root: io.cwd, now: io.now, fsApi: fsm, pathApi: pathm });
+
+    // Uncommitted changes: as `expo prebuild` does, warn before the first change (the install already changes package.json) and,
+    // on a terminal, ask. Only when something will change, so a second run stays quiet and does not ask git (WB-08).
+    const env = io.env || {};
+    const skipStatus = isOn(env.ESPRESSO_NO_GIT_STATUS) || isOn(env.EXPO_NO_GIT_STATUS);
+    if (!options.dryRun && !skipStatus) {
+      const missingPackages = PACKAGES.some((name) => !(project.packageJson.devDependencies || {})[name] && !(project.packageJson.dependencies || {})[name]);
+      const willChange =
+        missingPackages ||
+        NATIVE_FILES.some((spec) => {
+          const file = project.files[spec.key];
+          return Boolean(file) && applyPatch({ file, patcher: spec.patcher, context: { ...context, file }, dryRun: true, fsApi: fsm, gitHolds, backup }).status === 'patched';
+        });
+      if (willChange && hasUncommittedChanges({ cwd: io.cwd, spawnSync: io.spawnSync, environment }) === true) {
+        out('      Warning: this folder has uncommitted changes in Git. Commit them first, so that the changes of the wizard are easy to review and undo.');
+        out('      To skip this check, set ESPRESSO_NO_GIT_STATUS=1.');
+        if (prompter && !isCi(env.CI)) {
+          const answer = (await prompter.ask('      Continue anyway? [y/N] ')).trim().toLowerCase();
+          if (answer !== 'y' && answer !== 'yes') {
+            err('[espresso-notify] Cancelled. Nothing was changed.');
+            throw new Stop(1);
+          }
+        }
+      }
+    }
+
     // 2. Install ------------------------------------------------------------------------------------------------
     out('[2/6] Installing the packages');
     const deps = { ...(project.packageJson.devDependencies || {}), ...(project.packageJson.dependencies || {}) };
@@ -177,7 +248,7 @@ async function runBare(options, io, helpers) {
       const found = declaredMajor(io.cwd, name, deps[name], fsm, pathm);
       if (found && found.major !== firebaseMajor) {
         out(
-          `      Warning: ${name} is on ${found.version}, and React Native ${rn.version} works with major ${firebaseMajor}. ` +
+          `      Warning: ${name} is on ${printable(found.version)}, and React Native ${rnVersion} works with major ${firebaseMajor}. ` +
           'The wizard does not change it.',
         );
       }
@@ -222,42 +293,65 @@ async function runBare(options, io, helpers) {
 
     // 3. Native files -------------------------------------------------------------------------------------------
     out('[3/6] Changing the native files');
-    const context = { appName: project.appName, reactNative: rn, googleServicesVersion: GOOGLE_SERVICES_VERSION };
     for (const spec of NATIVE_FILES) {
       const file = project.files[spec.key];
       const rel = display(file, spec.fallback);
+      // `rel` stays as it is for Git; every line that reaches the terminal gets `shown`, so a folder name cannot send a control sequence.
+      const shown = printable(rel);
       let result;
       if (!file) {
         const folder = spec.platform === 'ios' ? project.hasIos : project.hasAndroid;
         result = {
           status: 'missing',
-          reason: folder ? `${rel} was not found` : `there is no ${spec.platform}/ folder`,
+          reason: folder ? `${shown} was not found` : `there is no ${spec.platform}/ folder`,
         };
       } else {
-        result = applyPatch({ file, patcher: spec.patcher, context: { ...context, file }, dryRun: options.dryRun, now: io.now, fsApi: fsm });
+        result = applyPatch({
+          file,
+          patcher: spec.patcher,
+          context: { ...context, file },
+          dryRun: options.dryRun,
+          fsApi: fsm,
+          gitHolds,
+          backup,
+        });
       }
-      if (result.warning) out(`      Warning (${rel}): ${result.warning}`);
+      if (result.warning) out(`      Warning (${shown}): ${printable(String(result.warning))}`);
       if (result.status === 'patched') {
         if (options.dryRun) {
-          out(`      Would add to ${rel}:`);
-          for (const line of result.preview || []) out(`        + ${line}`);
+          out(`      Would add to ${shown}:`);
+          for (const line of result.preview || []) out(`        + ${printable(String(line))}`);
+          if (result.git) {
+            out(`      Git has the original of ${shown}: no copy.`);
+          } else {
+            const copy = printable(display(result.wouldBackup, ''));
+            out(`      Would copy the original to ${copy}`);
+            state.backups.push(copy);
+          }
         } else {
-          const copy = display(result.backup, '');
-          out(`      ${rel}: added ${(result.preview || []).length} lines between espresso-notify markers. Copy of the original: ${copy}`);
-          state.backups.push(copy);
+          const added = `${shown}: added ${(result.preview || []).length} lines between espresso-notify markers.`;
+          if (result.git) {
+            out(`      ${added} Git has the original, so there is no copy.`);
+            state.inGit.push(rel);
+          } else {
+            const copy = printable(display(result.backup, ''));
+            out(`      ${added} Copy of the original: ${copy}`);
+            state.backups.push(copy);
+          }
           state.changed = true;
         }
       } else if (result.status === 'already') {
-        out(`      ${rel}: already set up.`);
+        out(`      ${shown}: already set up.`);
       } else if (result.status === 'error') {
-        err(`[espresso-notify] ${rel}: ${result.reason}`);
-        if (result.backup) state.backups.push(display(result.backup, ''));
+        err(`[espresso-notify] ${shown}: ${printable(String(result.reason))}`);
+        if (result.backup) state.backups.push(printable(display(result.backup, '')));
         state.failed = true;
       } else {
-        const step = spec.step(rel);
-        out(`      ${rel}: left alone, ${String(result.reason).replace(/\.\s*$/, '')}.`);
-        if (!String(result.reason).includes(step)) out(`      By hand: ${step}`);
-        state.manual.push(`${rel}: ${step}`);
+        const step = spec.step(shown);
+        const reason = printable(String(result.reason));
+        out(`      ${shown}: left alone, ${reason.replace(/\.\s*$/, '')}.`);
+        if (!reason.includes(step)) out(`      By hand: ${step}`);
+        state.manual.push(`${shown}: ${step}`);
       }
     }
 
@@ -333,7 +427,7 @@ async function runBare(options, io, helpers) {
     const steps = manualSteps({
       hasIos: project.hasIos,
       hasAndroid: project.hasAndroid,
-      iosAppDir,
+      iosAppDir: iosAppDir === null ? null : printable(iosAppDir),
       hasGoogleServicesJson: project.hasAndroid && isFile(pathm.join(io.cwd, 'android', 'app', 'google-services.json')),
       hasPlist: Boolean(iosAppDir) && isFile(pathm.join(io.cwd, ...iosAppDir.split('/'), 'GoogleService-Info.plist')),
       hasAsyncStorage: Boolean(deps['@react-native-async-storage/async-storage']),
@@ -343,15 +437,35 @@ async function runBare(options, io, helpers) {
     out('');
 
     // The end ---------------------------------------------------------------------------------------------------
+    // The line for .gitignore: the wizard prints it and never writes it.
+    const gitignoreLine = () => {
+      out('Add this line to your .gitignore so that `git add .` leaves the copies out (the wizard does not edit .gitignore):');
+      out(`  ${BACKUP_DIR}/`);
+    };
     if (options.dryRun) {
       if (state.manual.length > 0) out(`${state.manual.length} native step${state.manual.length > 1 ? 's' : ''} would be left for you (see above).`);
+      if (state.backups.length > 0) gitignoreLine();
       out('Dry run: nothing was changed.');
       return state.failed ? 2 : 0;
     }
+    if (state.inGit.length > 0) {
+      const n = state.inGit.length;
+      out(`Git has the original of ${n} file${n > 1 ? 's' : ''}, so the wizard made no copy of ${n > 1 ? 'them' : 'it'}. To review or undo a change, run from this folder:`);
+      for (const rel of state.inGit) {
+        const quoted = shellPath(rel, io.platform);
+        if (quoted === null) {
+          out(`  ${printable(rel)}: the name has a character that a shell or Git reads, so no command is printed. Run git diff HEAD -- and git checkout HEAD -- on it, with the name quoted for your shell and written as a literal path for Git.`);
+        } else {
+          out(`  git diff HEAD -- ${quoted}`);
+          out(`  git checkout HEAD -- ${quoted}`);
+        }
+      }
+    }
     if (state.backups.length > 0) {
-      out(`Copies of the original files are next to them (${state.backups.length}):`);
+      out(`Copies of the original files are in ${printable(display(backup.folder(), ''))}/ (${state.backups.length}):`);
       for (const copy of state.backups) out(`  - ${copy}`);
-      out('Check the changes, then delete the copies you do not need.');
+      gitignoreLine();
+      out('Check the changes, then delete the folder when you do not need the copies.');
     }
     if (state.failed) {
       out('Some steps did not finish. See the messages above.');
@@ -366,11 +480,11 @@ async function runBare(options, io, helpers) {
     return 0;
   } catch (error) {
     if (error instanceof Stop) return error.code;
-    err(`[espresso-notify] The wizard stopped: ${error && error.message ? error.message : error}`);
+    err(`[espresso-notify] The wizard stopped: ${printable(String(error && error.message ? error.message : error))}`);
     return 2;
   } finally {
     if (prompter) prompter.close();
   }
 }
 
-module.exports = { runBare, PACKAGES, MANAGERS };
+module.exports = { runBare, shellPath, printable, WINDOWS_UNSAFE, CONTROL, GIT_GLOB, PACKAGES, MANAGERS };

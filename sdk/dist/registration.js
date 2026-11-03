@@ -115,11 +115,24 @@ class RegistrationTracker {
     forget(kind) {
         return this._update((record) => { delete record[kind]; });
     }
+    /** Forgets everything, in memory and in the store (`wipeLocalData`): every call runs again. Never throws. */
+    reset() {
+        const run = this._chain.then(() => __awaiter(this, void 0, void 0, function* () {
+            this._record = { v: 1 };
+            this._loading = null;
+            if (typeof this._store.removeItem === 'function')
+                yield this._store.removeItem(this._key);
+            else
+                yield this._store.setItem(this._key, '');
+        }));
+        this._chain = run.then(() => undefined, () => undefined);
+        return run.catch(() => undefined);
+    }
     _fingerprint(parts) {
         var _a, _b, _c, _d, _e, _f, _g;
         const appVersion = (_d = (_a = parts.appVersion) !== null && _a !== void 0 ? _a : (_c = (_b = this._options).getAppVersion) === null || _c === void 0 ? void 0 : _c.call(_b)) !== null && _d !== void 0 ? _d : '';
         // JSON keeps the fields apart (a user id that ends like a token cannot be confused with it).
-        return hashText(JSON.stringify([parts.token, appVersion, (_e = parts.userId) !== null && _e !== void 0 ? _e : '', (_f = parts.userName) !== null && _f !== void 0 ? _f : '', (_g = parts.identityHash) !== null && _g !== void 0 ? _g : '']));
+        return hashText(JSON.stringify([parts.token, appVersion, (_e = parts.userId) !== null && _e !== void 0 ? _e : '', (_f = parts.userName) !== null && _f !== void 0 ? _f : '', (_g = parts.identityToken) !== null && _g !== void 0 ? _g : '']));
     }
     _read() {
         if (this._record)

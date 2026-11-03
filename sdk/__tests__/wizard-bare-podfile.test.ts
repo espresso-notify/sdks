@@ -15,7 +15,7 @@ import { addedLines, FIXTURE_ROOT, fixture, onlyAddsLines, TEMPLATE_VERSIONS } f
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { podfile } = require('../bin/lib/patchers/podfile.js');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { applyPatch } = require('../bin/lib/patch.js');
+const { applyPatch, createBackupSession } = require('../bin/lib/patch.js');
 
 const BEGIN = '# espresso-notify:begin use-frameworks';
 const END = '# espresso-notify:end';
@@ -236,14 +236,19 @@ describe('podfile through applyPatch on a copy of the template', () => {
     cpSync(join(FIXTURE_ROOT, version, rel), join(dir, rel));
     const file = join(dir, rel);
     const now = new Date(2026, 9, 23, 10, 0, 0);
-    const run = () => applyPatch({ file, patcher: podfile, context: { file }, now });
+    const backup = createBackupSession({ root: dir, now });
+    const run = () => applyPatch({ file, patcher: podfile, context: { file }, backup });
 
     expect(run().status).toBe('patched');
     expect(onlyAddsLines(fixture(version, rel), readFileSync(file, 'utf8'))).toBe(true);
     const afterFirst = readFileSync(file, 'utf8');
     expect(run().status).toBe('already');
     expect(readFileSync(file, 'utf8')).toBe(afterFirst);
-    expect(readdirSync(join(dir, 'ios')).filter((n) => n.endsWith('.bak'))).toHaveLength(1);
+    // one copy, in the one backup folder, none next to the Podfile; the second run made no second folder
+    const folder = join(dir, '.espresso-notify-backup');
+    expect(readdirSync(folder)).toHaveLength(1);
+    expect(readdirSync(join(folder, readdirSync(folder)[0], 'ios'))).toEqual(['Podfile']);
+    expect(readdirSync(join(dir, 'ios'))).toEqual(['Podfile']);
   });
 
   it('a static Podfile is not touched and gets no copy', () => {
@@ -253,7 +258,7 @@ describe('podfile through applyPatch on a copy of the template', () => {
     const file = join(dir, 'ios', 'Podfile');
     const text = podfileWith('use_frameworks! :linkage => :static\n\n');
     require('fs').writeFileSync(file, text);
-    const result = applyPatch({ file, patcher: podfile, context: { file } });
+    const result = applyPatch({ file, patcher: podfile, context: { file }, backup: createBackupSession({ root: dir }) });
     expect(result.status).toBe('unsupported');
     expect(readFileSync(file, 'utf8')).toBe(text);
     expect(readdirSync(join(dir, 'ios'))).toEqual(['Podfile']);

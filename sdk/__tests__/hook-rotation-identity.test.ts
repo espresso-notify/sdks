@@ -97,10 +97,10 @@ describe('token rotation keeps the identity of the hook (D-A)', () => {
     expect(mockRecordLifecycle).toHaveBeenCalledWith('subscription', 'ExponentPushToken[old]', 'ExponentPushToken[new]')
   })
 
-  it('sends the identity hash of the user along with the identify of the new token', async () => {
+  it('sends the identity token of the user along with the identify of the new token', async () => {
     const { provider, rotate } = makeProvider()
     const { result } = renderHook(() =>
-      usePushNotifications({ projectId: 'pk_test', provider: provider as any, externalId: 'user-7', identityHash: 'abc123' }),
+      usePushNotifications({ projectId: 'pk_test', provider: provider as any, externalId: 'user-7', identityToken: 'abc123' }),
     )
     await waitFor(() => expect(result.current.isReady).toBe(true))
     await waitFor(() => expect(mockIdentify).toHaveBeenCalledTimes(1))
@@ -109,7 +109,7 @@ describe('token rotation keeps the identity of the hook (D-A)', () => {
     await act(async () => { rotate('ExponentPushToken[new]') })
 
     await waitFor(() => expect(mockIdentify).toHaveBeenCalledTimes(1))
-    expect(mockIdentify).toHaveBeenCalledWith({ externalId: 'user-7', identityHash: 'abc123' }, 'ExponentPushToken[new]')
+    expect(mockIdentify).toHaveBeenCalledWith({ externalId: 'user-7', identityToken: 'abc123' }, 'ExponentPushToken[new]')
   })
 
   it('identifies nobody when the app has no user: the new token stays anonymous', async () => {
@@ -294,3 +294,5 @@ describe('an identity change during a rotation waits for the rotation', () => {
     expect(mockIdentify).toHaveBeenLastCalledWith({ externalId: 'user-8' }, 'ExponentPushToken[new]')
   })
 })
+
+// feature: registration.token-rotation

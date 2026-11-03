@@ -150,14 +150,18 @@ describe('both options off (SDKS-02, SDKS-04)', () => {
     const { result } = renderHook(() => usePushNotifications({ ...BASE, externalId: 'user-1' }))
     await waitFor(() => expect(result.current.isReady).toBe(true))
     await waitFor(() => expect(paths()).toContain('/v1/devices/identify'))
+    // sdk-parity T25: a successful identify of a new user also sends the `identity` lifecycle event
+    await waitFor(() => expect(paths()).toContain('/v1/devices/lifecycle'))
     await result.current.client!.devices.trackOpen(42)
 
-    expect(paths()).toEqual(['/v1/devices/register', '/v1/devices/identify', '/v1/notifications/track'])
+    expect(paths()).toEqual(['/v1/devices/register', '/v1/devices/identify', '/v1/devices/lifecycle', '/v1/notifications/track'])
     for (const c of calls) for (const h of SIGN_HEADERS) expect(c.headers[h]).toBeUndefined()
     const body = JSON.parse(calls[0].body)
     expect(body).not.toHaveProperty('signing_public_key')
     expect(body).not.toHaveProperty('signing_key_type')
-    expect(body).not.toHaveProperty('device_id')
+    // sdk-parity T62 (PAR-78): the register always names the SDK and carries the install id, with signing off too
+    expect(body.device_id).toMatch(/^[0-9a-f]{32}$/)
+    expect(body.sdk).toBe('react-native')
     expect(mockGenerate).not.toHaveBeenCalled()
     expect(warn).not.toHaveBeenCalled()
   })

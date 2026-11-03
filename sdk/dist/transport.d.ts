@@ -38,6 +38,11 @@ export type NativeErrorCode = typeof NATIVE_ERROR_CODES[number];
 export declare const SUPPORTED_CONTRACTS: number[];
 /** The time the native module gives one request, from the start of the call to the last byte of the answer. */
 export declare const NATIVE_TIMEOUT_MS = 30000;
+/** The version of this package; `package.json` says the same (a test keeps the two equal). */
+export declare const SDK_VERSION = "0.1.0";
+/** The header that names the SDK and its version on every request, as `react-native/<version>`. */
+export declare const SDK_HEADER = "X-Espresso-SDK";
+export declare const SDK_HEADER_VALUE = "react-native/0.1.0";
 /** One host of the pin set the native module holds. */
 export interface NativePinEntry {
     host: string;
